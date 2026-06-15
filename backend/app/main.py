@@ -4,6 +4,7 @@ import os
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -54,3 +55,24 @@ app.include_router(ws.router)
 @app.get("/api/health")
 def health():
     return {"data": {"status": "ok"}}
+
+
+# Serve the built frontend SPA for single-container deploys. Registered last so
+# /api, /storage and /ws always take precedence. Unknown (non-asset) paths fall
+# back to index.html for client-side routing (react-router).
+if os.path.isdir(settings.frontend_dir):
+    _frontend_root = os.path.realpath(settings.frontend_dir)
+    _index_html = os.path.join(_frontend_root, "index.html")
+
+    @app.get("/{full_path:path}")
+    def spa(full_path: str):
+        if full_path.startswith(("api/", "storage/", "ws/")):
+            raise StarletteHTTPException(status_code=404)
+        candidate = os.path.realpath(os.path.join(_frontend_root, full_path))
+        if (
+            full_path
+            and candidate.startswith(_frontend_root + os.sep)
+            and os.path.isfile(candidate)
+        ):
+            return FileResponse(candidate)
+        return FileResponse(_index_html)

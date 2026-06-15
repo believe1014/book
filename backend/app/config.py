@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # Storage (spec §6.5: local ./storage)
     storage_dir: str = str(BASE_DIR / "storage")
 
+    # Built frontend SPA (single-container deploy); served if the dir exists
+    frontend_dir: str = str(BASE_DIR.parent / "frontend" / "dist")
+
     # Media limits (spec FR-82)
     max_file_size: int = 50 * 1024 * 1024  # 50MB per file
     book_quota: int = 1024 * 1024 * 1024  # 1GB per book

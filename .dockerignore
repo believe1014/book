@@ -1,0 +1,21 @@
+# Build / dependency artifacts (rebuilt inside the image)
+**/node_modules
+frontend/dist
+backend/venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+
+# Local app data — must NOT be baked into the image
+backend/app.db
+backend/app.db-shm
+backend/app.db-wal
+backend/storage
+
+# VCS / tooling / docs
+.git
+.gitignore
+.claude
+*.md
+.env
+.env.*
