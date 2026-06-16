@@ -56,6 +56,13 @@ python -m venv venv
 - API base：`http://127.0.0.1:8000/api`
 - OpenAPI 文件（FastAPI 自動產生）：`http://127.0.0.1:8000/docs`
 - 資料庫檔案 `backend/app.db` 會在首次啟動時自動建立（WAL 模式）。
+
+> **正式部署（Zeabur 等 PaaS）的資料持久化**
+> 容器檔案系統是「用完即丟」，SQLite 檔會在每次重新部署時被清空（帳號、書稿全失）。
+> 請改用託管資料庫：設定環境變數 `DATABASE_URL`（標準 PostgreSQL 連線字串，
+> 例如 `postgresql://user:pass@host:5432/dbname`）即可。設了它就優先使用 PostgreSQL，
+> 沒設則退回本機 SQLite。注意：上傳的媒體檔（`backend/storage/`）若要持久化，仍需另接
+> 物件儲存或掛載磁碟。
 - 上傳檔案存於 `backend/storage/{book_id}/`，並由 `/storage/...` 提供。
 
 ### 2. 前端

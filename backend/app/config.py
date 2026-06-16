@@ -4,7 +4,9 @@ Centralised settings for the 協作撰書系統 backend. Values can be overridde
 via environment variables (see pydantic-settings).
 """
 from pathlib import Path
+from typing import Optional
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # backend/
@@ -19,6 +21,13 @@ class Settings(BaseSettings):
     jwt_expire_hours: int = 24  # spec FR-02: 24h access token
 
     # Database
+    # If set (e.g. a Zeabur-managed PostgreSQL), it takes precedence over the
+    # local SQLite file so data survives container redeploys. Accepts either the
+    # unprefixed DATABASE_URL (Zeabur default) or BOOK_DATABASE_URL.
+    database_url: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("DATABASE_URL", "BOOK_DATABASE_URL"),
+    )
     db_path: str = str(BASE_DIR / "app.db")
 
     # Storage (spec §6.5: local ./storage)
