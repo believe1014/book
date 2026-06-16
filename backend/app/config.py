@@ -49,5 +49,11 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
+    # MCP endpoint Host-header allowlist (comma-separated, e.g.
+    # "kkbook.zeabur.app"). If empty, the MCP transport's DNS-rebinding
+    # protection is disabled so it works behind any domain — safe here because
+    # every MCP tool is authenticated with a Bearer JWT.
+    mcp_allowed_hosts: str = ""
+
 
 settings = Settings()

@@ -12,6 +12,7 @@ from typing import Optional
 from sqlmodel import Session, select
 
 from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 try:  # clean error messages to the client when available
     from mcp.server.fastmcp.exceptions import ToolError
@@ -19,6 +20,7 @@ except Exception:  # pragma: no cover - fallback for older SDKs
     ToolError = ValueError
 
 from .auth import decode_token
+from .config import settings
 from .database import engine
 from .deps import EDIT_ROLES
 from .models import (
@@ -26,6 +28,18 @@ from .models import (
 )
 from .routers.content import _get_or_create_content, _prune_versions
 from .services.wordcount import count_words, extract_text
+
+_allowed_hosts = [h.strip() for h in settings.mcp_allowed_hosts.split(",") if h.strip()]
+if _allowed_hosts:
+    _transport_security = TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=_allowed_hosts,
+        allowed_origins=_allowed_hosts,
+    )
+else:
+    # No allowlist configured → don't reject by Host (works behind any domain).
+    # Safe because every tool requires a Bearer JWT.
+    _transport_security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
 
 mcp_server = FastMCP(
     "協作撰書系統",
@@ -37,6 +51,7 @@ mcp_server = FastMCP(
     stateless_http=True,
     json_response=True,
     streamable_http_path="/",
+    transport_security=_transport_security,
 )
 
 CHAPTER_STATUSES = {"not_started", "writing", "reviewing", "done"}
