@@ -4,11 +4,15 @@ Uses a managed PostgreSQL when ``database_url`` is configured (production /
 Zeabur, so data survives container redeploys); otherwise falls back to a local
 SQLite file with WAL mode for development (spec §8.1).
 """
+import logging
+
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, create_engine
 
 from .config import settings
+
+logger = logging.getLogger("uvicorn.error")
 
 
 def _normalize_pg_url(url: str) -> str:
@@ -20,12 +24,37 @@ def _normalize_pg_url(url: str) -> str:
     return url
 
 
-if settings.database_url:
+def _valid_database_url(raw: str | None) -> str | None:
+    """Return a usable DB URL, or None to fall back to SQLite.
+
+    Guards against an unresolved platform variable reference (e.g. a literal
+    "${POSTGRES_CONNECTION_STRING}" when the reference didn't resolve), which
+    would otherwise crash the process on startup with an unparseable URL.
+    """
+    if not raw:
+        return None
+    url = raw.strip()
+    if not url:
+        return None
+    if "${" in url or not url.startswith(("postgres://", "postgresql://", "sqlite")):
+        logger.error(
+            "DATABASE_URL is set but not a valid DB URL (%r); falling back to "
+            "local SQLite. Data will NOT persist across redeploys until this is "
+            "fixed — set DATABASE_URL to the actual connection string.", url,
+        )
+        return None
+    return url
+
+
+_db_url = _valid_database_url(settings.database_url)
+
+if _db_url:
     engine = create_engine(
-        _normalize_pg_url(settings.database_url),
+        _normalize_pg_url(_db_url),
         echo=False,
         pool_pre_ping=True,  # drop stale connections (managed DB may recycle them)
     )
+    logger.info("Database: using configured URL (%s)", engine.dialect.name)
 else:
     # check_same_thread=False so the engine can be used across FastAPI threads.
     engine = create_engine(
