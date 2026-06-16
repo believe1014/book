@@ -115,6 +115,20 @@ input, textarea, select {
   outline: none;
 }
 .textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
+
+/* input with a trailing icon button (e.g. password show/hide) */
+.input-with-icon { position: relative; display: flex; align-items: center; }
+.input-with-icon .input { padding-right: 40px; }
+.input-icon-btn {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 32px; height: 32px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; cursor: pointer; font-size: 16px;
+  border-radius: var(--radius-md); color: var(--text-muted); line-height: 1;
+}
+.input-icon-btn:hover { background: var(--bg-subtle); }
+.input-icon-btn:focus-visible { outline: 2px solid var(--brand-primary); outline-offset: 1px; }
+
 .field { margin-bottom: var(--sp-4); }
 .field label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 6px; color: var(--text-primary); }
 .field .error { color: var(--danger); font-size: 12px; margin-top: 4px; }

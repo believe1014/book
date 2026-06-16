@@ -14,6 +14,7 @@ export default function AuthPage({ mode }) {
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [name, setName] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -71,9 +72,18 @@ export default function AuthPage({ mode }) {
           </div>
           <div className="field">
             <label htmlFor="password">密碼</label>
-            <input id="password" type="password" className="input" value={password}
-              onChange={(e) => setPassword(e.target.value)} required minLength={6}
-              autoComplete={isLogin ? 'current-password' : 'new-password'} />
+            <div className="input-with-icon">
+              <input id="password" type={showPassword ? 'text' : 'password'} className="input" value={password}
+                onChange={(e) => setPassword(e.target.value)} required minLength={6}
+                autoComplete={isLogin ? 'current-password' : 'new-password'} />
+              <button type="button" className="input-icon-btn"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? '隱藏密碼' : '顯示密碼'}
+                aria-pressed={showPassword}
+                title={showPassword ? '隱藏密碼' : '顯示密碼'}>
+                {showPassword ? '🙈' : '👁'}
+              </button>
+            </div>
             {!isLogin && <div className="field-hint">至少 6 個字元</div>}
           </div>
 
