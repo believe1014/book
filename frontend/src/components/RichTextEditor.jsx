@@ -12,6 +12,13 @@ import { useEffect, useImperativeHandle, useRef, forwardRef } from 'react'
 // ----- HTML <-> doc JSON conversion -----
 function blockToNode(el) {
   const tag = el.tagName.toLowerCase()
+  // Standalone (block-level) image, e.g. a figure inserted between paragraphs.
+  if (tag === 'img') {
+    return {
+      type: 'image',
+      attrs: { src: el.getAttribute('src') || '', alt: el.getAttribute('alt') || '' },
+    }
+  }
   let type = 'paragraph'
   const attrs = {}
   if (tag === 'h1' || tag === 'h2' || tag === 'h3') {
@@ -33,7 +40,13 @@ function blockToNode(el) {
       if (child.textContent) content.push({ type: 'text', text: child.textContent })
     } else if (child.nodeType === Node.ELEMENT_NODE) {
       const ctag = child.tagName.toLowerCase()
-      if (['ul', 'ol', 'li', 'blockquote'].includes(ctag)) {
+      if (ctag === 'img') {
+        // Inline image (e.g. inserted inside a paragraph by execCommand).
+        content.push({
+          type: 'image',
+          attrs: { src: child.getAttribute('src') || '', alt: child.getAttribute('alt') || '' },
+        })
+      } else if (['ul', 'ol', 'li', 'blockquote'].includes(ctag)) {
         content.push(blockToNode(child))
       } else {
         const marks = []
@@ -68,8 +81,19 @@ function escapeHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
+function escapeAttr(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function imgToHtml(node) {
+  const src = escapeAttr(node.attrs?.src)
+  const alt = escapeAttr(node.attrs?.alt)
+  return `<img src="${src}" alt="${alt}">`
+}
+
 function inlineToHtml(node) {
   if (node.type !== 'text') {
+    if (node.type === 'image') return imgToHtml(node)
     if (['bulletList', 'orderedList', 'listItem', 'blockquote'].includes(node.type)) {
       return docNodeToHtml(node)
     }
@@ -85,6 +109,7 @@ function inlineToHtml(node) {
 }
 
 function docNodeToHtml(node) {
+  if (node.type === 'image') return imgToHtml(node)
   const inner = (node.content || []).map(inlineToHtml).join('')
   switch (node.type) {
     case 'heading': return `<h${node.attrs?.level || 2}>${inner || '<br>'}</h${node.attrs?.level || 2}>`
