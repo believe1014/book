@@ -234,6 +234,17 @@ input, textarea, select {
 .tree-menu-btn { opacity: 0; padding: 0 4px; background: none; border: none; color: var(--text-muted); font-size: 16px; }
 .tree-item:hover .tree-menu-btn { opacity: 1; }
 
+/* collapse/expand toggle for chapters with sub-chapters */
+.tree-toggle {
+  flex: 0 0 16px; width: 16px; height: 16px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; cursor: pointer;
+  color: var(--text-muted); font-size: 10px; line-height: 1;
+  border-radius: 4px; transition: background .12s, color .12s;
+}
+.tree-toggle:hover { background: var(--bg-subtle); color: var(--text-primary); }
+.tree-toggle-spacer { flex: 0 0 16px; width: 16px; }
+
 /* book card hover (design.md BookCard hover) */
 .book-card { transition: box-shadow .12s, transform .12s; }
 .book-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }

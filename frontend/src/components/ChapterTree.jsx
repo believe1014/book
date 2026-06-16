@@ -21,6 +21,26 @@ export default function ChapterTree({
   const [menuFor, setMenuFor] = useState(null)
   const [dragId, setDragId] = useState(null)
 
+  // Collapsed sub-chapters, persisted per book so it survives reloads.
+  const collapseKey = `chapterTree.collapsed.${bookId}`
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      const raw = localStorage.getItem(collapseKey)
+      return new Set(raw ? JSON.parse(raw) : [])
+    } catch {
+      return new Set()
+    }
+  })
+
+  function toggleCollapse(id) {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      try { localStorage.setItem(collapseKey, JSON.stringify([...next])) } catch { /* ignore */ }
+      return next
+    })
+  }
+
   async function addChapter(parentId = null) {
     const title = parentId ? '新節' : '新章節'
     try {
@@ -119,13 +139,15 @@ export default function ChapterTree({
   function renderNode(ch, level) {
     const isSel = ch.id === selectedId
     const coEditor = coEditingMap?.[ch.id]
+    const hasChildren = ch.children?.length > 0
+    const isCollapsed = collapsed.has(ch.id)
     return (
       <div key={ch.id}>
         <div
           role="treeitem"
           aria-level={level}
           aria-selected={isSel}
-          aria-expanded={ch.children?.length ? true : undefined}
+          aria-expanded={hasChildren ? !isCollapsed : undefined}
           draggable={canEdit && renaming !== ch.id}
           onDragStart={() => setDragId(ch.id)}
           onDragOver={(e) => e.preventDefault()}
@@ -144,9 +166,23 @@ export default function ChapterTree({
           onKeyDown={(e) => {
             if (e.key === 'Enter') onSelect(ch.id)
             if (e.key === 'F2' && canEdit) startRename(ch.id, ch.title)
+            if (hasChildren && e.key === 'ArrowRight' && isCollapsed) { e.preventDefault(); toggleCollapse(ch.id) }
+            if (hasChildren && e.key === 'ArrowLeft' && !isCollapsed) { e.preventDefault(); toggleCollapse(ch.id) }
           }}
           tabIndex={0}
         >
+          {hasChildren ? (
+            <button
+              className="tree-toggle"
+              aria-label={isCollapsed ? '展開' : '收合'}
+              aria-expanded={!isCollapsed}
+              onClick={(e) => { e.stopPropagation(); toggleCollapse(ch.id) }}
+            >
+              {isCollapsed ? '▸' : '▾'}
+            </button>
+          ) : (
+            <span className="tree-toggle-spacer" />
+          )}
           <span className={`status-dot status-${ch.status}`} title={STATUS_TEXT[ch.status]} />
           {renaming === ch.id ? (
             <input autoFocus className="input" style={{ padding: '2px 6px', height: 26 }}
@@ -177,7 +213,7 @@ export default function ChapterTree({
         )}
 
         {/* child drop zone */}
-        {level === 1 && (
+        {level === 1 && !isCollapsed && (
           <div onDragOver={(e) => e.preventDefault()} onDrop={() => onDrop(ch, true)}>
             {(ch.children || []).map((kid) => renderNode(kid, 2))}
           </div>
