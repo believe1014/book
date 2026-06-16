@@ -79,6 +79,24 @@ npm run dev
 
 ---
 
+## MCP server（讓 AI 助理操作你的書）
+
+後端內建一個 **MCP server**（遠端 streamable HTTP），隨 app 一起部署，端點為：
+
+```
+http://127.0.0.1:8000/mcp/        # 本機
+https://<你的網域>/mcp/            # 部署後（注意結尾的斜線）
+```
+
+- **認證**：與網頁版共用 JWT。MCP client 需在 `Authorization` 標頭帶入 `Bearer <token>`，
+  token 由 `POST /api/auth/login` 取得。權限沿用書籍角色矩陣（owner/editor 可寫，其餘唯讀）。
+- **提供的工具**：`list_books`、`create_book`、`get_book`、`create_chapter`、`rename_chapter`、
+  `set_chapter_status`、`delete_chapter`、`get_chapter_content`、`update_chapter_content`。
+  章節內容以純文字讀寫（換行＝段落），寫入會自動 +1 版本並建立版本快照。
+- 在 claude.ai / Claude Desktop 新增自訂連接器時，填上 `/mcp/` 結尾的網址並設定上述 Bearer 標頭即可。
+
+---
+
 ## 測試
 
 後端煙霧測試（需先啟動後端 server）：

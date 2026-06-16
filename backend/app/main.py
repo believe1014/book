@@ -1,5 +1,6 @@
 """FastAPI entry point for 協作撰書系統 backend (spec §8.1/8.2)."""
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -14,9 +15,21 @@ from .errors import (
     APIError, api_error_handler, http_exception_handler,
     validation_exception_handler,
 )
+from .mcp_server import mcp_server
 from .routers import auth, books, chapters, content, media, ws
 
-app = FastAPI(title="協作撰書系統 API", version="1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    os.makedirs(settings.storage_dir, exist_ok=True)
+    # Run the MCP streamable-HTTP session manager for the app's lifetime
+    # (the mounted sub-app's own lifespan is not invoked by the parent).
+    async with mcp_server.session_manager.run():
+        yield
+
+
+app = FastAPI(title="協作撰書系統 API", version="1.0", lifespan=lifespan)
 
 # CORS for the Vite dev server (spec §8.1)
 app.add_middleware(
@@ -33,15 +46,13 @@ app.add_exception_handler(StarletteHTTPException, http_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 
-@app.on_event("startup")
-def on_startup():
-    init_db()
-    os.makedirs(settings.storage_dir, exist_ok=True)
-
-
 # Serve uploaded media (spec §6.5: local ./storage)
 os.makedirs(settings.storage_dir, exist_ok=True)
 app.mount("/storage", StaticFiles(directory=settings.storage_dir), name="storage")
+
+# MCP server (remote streamable HTTP) — Bearer-JWT authenticated. Mounted so it
+# ships with the same deployment; reachable at /mcp.
+app.mount("/mcp", mcp_server.streamable_http_app())
 
 # Routers
 app.include_router(auth.router)
@@ -66,7 +77,7 @@ if os.path.isdir(settings.frontend_dir):
 
     @app.get("/{full_path:path}")
     def spa(full_path: str):
-        if full_path.startswith(("api/", "storage/", "ws/")):
+        if full_path.startswith(("api/", "storage/", "ws/", "mcp")):
             raise StarletteHTTPException(status_code=404)
         candidate = os.path.realpath(os.path.join(_frontend_root, full_path))
         if (

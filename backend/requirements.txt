@@ -1,6 +1,9 @@
 fastapi==0.115.6
+# starlette pinned: fastapi 0.115.6 needs <0.42; also satisfies mcp (>=0.27).
+starlette==0.41.3
 uvicorn[standard]==0.34.0
-pydantic==2.10.4
+# pydantic bumped to satisfy mcp (>=2.11).
+pydantic==2.13.4
 pydantic-settings==2.7.1
 SQLModel==0.0.22
 python-jose[cryptography]==3.3.0
@@ -10,3 +13,4 @@ python-multipart==0.0.20
 email-validator==2.2.0
 websockets==14.1
 psycopg[binary]==3.2.9
+mcp==1.27.2
