@@ -14,3 +14,7 @@ email-validator==2.2.0
 websockets==14.1
 psycopg[binary]==3.2.9
 mcp==1.27.2
+# Pinned to the version compatible with starlette 0.41.3 (fastapi 0.115.6 caps
+# starlette <0.42); without this pin pip backtracks heavily and the build can
+# time out.
+sse-starlette==3.0.3
