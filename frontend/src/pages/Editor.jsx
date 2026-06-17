@@ -7,6 +7,7 @@ import ChapterTree from '../components/ChapterTree'
 import RichTextEditor from '../components/RichTextEditor'
 import StatsPanel from '../components/StatsPanel'
 import MediaPanel from '../components/MediaPanel'
+import CommentsPanel from '../components/CommentsPanel'
 import MembersModal from '../components/MembersModal'
 import BookSettings from '../components/BookSettings'
 import VersionHistory from '../components/VersionHistory'
@@ -31,7 +32,8 @@ export default function Editor() {
   const [content, setContent] = useState(null) // {version, doc}
   const [loadingContent, setLoadingContent] = useState(false)
   const [saveStatus, setSaveStatus] = useState('saved') // saved|saving|just-saved|conflict|offline
-  const [rightTab, setRightTab] = useState('stats') // stats|media
+  const [rightTab, setRightTab] = useState('stats') // stats|media|comments
+  const [unresolvedCount, setUnresolvedCount] = useState(0)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [statsRefresh, setStatsRefresh] = useState(0)
@@ -80,6 +82,8 @@ export default function Editor() {
   }
 
   const canEditRole = EDIT_ROLES.has(myRole)
+  const canComment = ['owner', 'editor', 'reviewer'].includes(myRole)
+  const isOwner = myRole === 'owner'
   const selectedChapter = findChapter(chapters, selectedId)
 
   // WebSocket presence / lock / live updates (FR-50/51/52)
@@ -134,6 +138,12 @@ export default function Editor() {
       if (canEditRole) api.releaseLock(selectedId).catch(() => {})
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId])
+
+  // Keep the comment badge fresh when switching chapters (lightweight count).
+  useEffect(() => {
+    if (selectedId == null) { setUnresolvedCount(0); return }
+    api.listComments(selectedId).then((d) => setUnresolvedCount(d.unresolved)).catch(() => {})
   }, [selectedId])
 
   async function reloadContent(cid) {
@@ -311,13 +321,19 @@ export default function Editor() {
               <div className="row gap-2">
                 <button className="btn btn-sm" style={rightTab === 'stats' ? activeTab : tab} onClick={() => setRightTab('stats')}>統計</button>
                 <button className="btn btn-sm" style={rightTab === 'media' ? activeTab : tab} onClick={() => setRightTab('media')}>媒體</button>
+                <button className="btn btn-sm" style={rightTab === 'comments' ? activeTab : tab} onClick={() => setRightTab('comments')}>
+                  評論{unresolvedCount > 0 && <span style={commentBadge}>{unresolvedCount}</span>}
+                </button>
               </div>
               <button className="btn btn-ghost btn-sm" onClick={() => setRightCollapsed(true)} title="收合">⟩</button>
             </div>
             {rightTab === 'stats' ? (
               <StatsPanel bookId={bookId} chapterId={selectedId} canEdit={canEditRole} refreshKey={statsRefresh} />
-            ) : (
+            ) : rightTab === 'media' ? (
               <MediaPanel bookId={bookId} canEdit={canEditRole} onInsert={insertMedia} />
+            ) : (
+              <CommentsPanel bookId={bookId} chapterId={selectedId} canComment={canComment}
+                currentUserId={user?.id} isOwner={isOwner} onCountChange={setUnresolvedCount} />
             )}
           </aside>
         ) : (
@@ -388,6 +404,10 @@ const centerCol = { flex: 1, overflow: 'auto', padding: '24px 32px', background:
 const rightColStyle = { width: 'var(--right-col)', borderLeft: '1px solid var(--border-default)', padding: 16, overflow: 'auto', background: 'var(--bg-surface)', flexShrink: 0 }
 const tab = { background: 'var(--bg-subtle)', color: 'var(--text-muted)' }
 const activeTab = { background: 'var(--brand-primary)', color: '#fff' }
+const commentBadge = {
+  marginLeft: 5, background: 'var(--danger)', color: '#fff', borderRadius: 999,
+  fontSize: 11, padding: '0 6px', lineHeight: '16px', display: 'inline-block', minWidth: 16, textAlign: 'center',
+}
 const banner = (other) => ({
   maxWidth: 720, margin: '0 auto 16px', padding: '10px 16px', borderRadius: 8,
   background: other ? '#FFF6E0' : 'var(--bg-subtle)',

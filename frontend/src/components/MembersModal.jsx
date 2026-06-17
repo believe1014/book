@@ -74,7 +74,7 @@ export default function MembersModal({ bookId, myRole, onClose }) {
             <label>角色</label>
             <select className="select" value={role} onChange={(e) => setRole(e.target.value)}>
               <option value="editor">編輯者 Editor — 可編寫章節、上傳素材</option>
-              <option value="reviewer">審閱者 Reviewer — 可檢視（未來可評論）</option>
+              <option value="reviewer">審閱者 Reviewer — 可檢視並評論（不可改正文）</option>
               <option value="viewer">讀者 Viewer — 僅可唯讀檢視</option>
             </select>
           </div>

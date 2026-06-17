@@ -102,6 +102,22 @@ class ContentVersion(SQLModel, table=True):
     created_at: str = Field(default_factory=utcnow)
 
 
+class Comment(SQLModel, table=True):
+    __tablename__ = "comments"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    chapter_id: int = Field(foreign_key="chapters.id", index=True)
+    author_id: int = Field(foreign_key="users.id", index=True)
+    parent_id: Optional[int] = Field(default=None, foreign_key="comments.id", index=True)
+    body: str = Field(default="")
+    image_url: Optional[str] = None
+    resolved: bool = Field(default=False)  # only meaningful on top-level threads
+    resolved_by: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: str = Field(default_factory=utcnow)
+    updated_at: str = Field(default_factory=utcnow)
+    deleted_at: Optional[str] = Field(default=None, index=True)  # soft delete
+
+
 class MediaAsset(SQLModel, table=True):
     __tablename__ = "media_assets"
 

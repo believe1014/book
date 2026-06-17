@@ -3,7 +3,7 @@
 Permission matrix (PRD §3.3):
 - owner:    full control (incl. delete book, manage members, transfer)
 - editor:   chapter CRUD, edit content, upload media
-- reviewer: view only (comments deferred to P2)
+- reviewer: view content + post review comments (cannot edit content)
 - viewer:   view only
 
 Resolution rule (spec §6.7): look up book_members for the user's role, then
@@ -22,6 +22,8 @@ from .models import Book, BookMember, Chapter, User
 
 # Roles that may edit chapters / content / media.
 EDIT_ROLES = {"owner", "editor"}
+# Roles that may post review comments (reviewers can comment but not edit content).
+COMMENT_ROLES = {"owner", "editor", "reviewer"}
 # Roles that may view.
 VIEW_ROLES = {"owner", "editor", "reviewer", "viewer"}
 

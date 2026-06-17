@@ -16,7 +16,7 @@ from .errors import (
     validation_exception_handler,
 )
 from .mcp_server import mcp_server
-from .routers import auth, books, chapters, content, media, ws
+from .routers import auth, books, chapters, comments, content, media, ws
 
 
 @asynccontextmanager
@@ -60,6 +60,7 @@ app.include_router(books.router)
 app.include_router(chapters.router)
 app.include_router(content.router)
 app.include_router(media.router)
+app.include_router(comments.router)
 app.include_router(ws.router)
 
 

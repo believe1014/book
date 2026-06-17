@@ -91,6 +91,14 @@ export const api = {
   bookStats: (id) => request('GET', `/books/${id}/stats`),
   chapterStats: (cid) => request('GET', `/chapters/${cid}/stats`),
 
+  // Comments (review)
+  listComments: (cid) => request('GET', `/chapters/${cid}/comments`),
+  createComment: (cid, b) => request('POST', `/chapters/${cid}/comments`, b),
+  updateComment: (id, b) => request('PATCH', `/comments/${id}`, b),
+  deleteComment: (id) => request('DELETE', `/comments/${id}`),
+  resolveComment: (id) => request('POST', `/comments/${id}/resolve`),
+  unresolveComment: (id) => request('DELETE', `/comments/${id}/resolve`),
+
   // Media
   listMedia: (id, q = '') => request('GET', `/books/${id}/media${q}`),
   uploadMedia: (id, form) => request('POST', `/books/${id}/media`, form, true),

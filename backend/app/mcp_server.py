@@ -24,7 +24,7 @@ from .config import settings
 from .database import engine
 from .deps import EDIT_ROLES
 from .models import (
-    Book, BookMember, Chapter, ChapterContent, ContentVersion, User, utcnow,
+    Book, BookMember, Chapter, ChapterContent, Comment, ContentVersion, User, utcnow,
 )
 from .routers.content import _get_or_create_content, _prune_versions
 from .services.wordcount import count_words, extract_text
@@ -314,3 +314,43 @@ def update_chapter_content(ctx: Context, chapter_id: int, text: str) -> dict:
         session.refresh(content)
         _prune_versions(session, chapter_id)
         return {"chapter_id": chapter_id, "version": content.version, "word_count": wc}
+
+
+# ---------- tools: review comments ----------
+@mcp_server.tool()
+def list_comments(ctx: Context, chapter_id: int) -> dict:
+    """List review comments on a chapter as threads (top-level comments with their
+    single-level replies), plus the count of unresolved threads. Read-only."""
+    with Session(engine) as session:
+        user = _current_user(ctx, session)
+        _resolve_chapter(session, chapter_id, user)
+        rows = session.exec(
+            select(Comment).where(
+                Comment.chapter_id == chapter_id, Comment.deleted_at.is_(None)
+            )
+        ).all()
+        rows.sort(key=lambda c: c.created_at)
+        names = {}
+        for uid in {c.author_id for c in rows}:
+            u = session.get(User, uid)
+            names[uid] = u.name if u else "?"
+
+        def fmt(c: Comment) -> dict:
+            return {
+                "id": c.id, "author": names.get(c.author_id, "?"),
+                "body": c.body, "image_url": c.image_url,
+                "resolved": c.resolved, "created_at": c.created_at,
+            }
+
+        replies: dict[int, list] = {}
+        for c in rows:
+            if c.parent_id is not None:
+                replies.setdefault(c.parent_id, []).append(c)
+        threads = []
+        for t in [c for c in rows if c.parent_id is None]:
+            node = fmt(t)
+            node["replies"] = [fmt(r) for r in replies.get(t.id, [])]
+            threads.append(node)
+        unresolved = sum(1 for c in rows if c.parent_id is None and not c.resolved)
+        return {"chapter_id": chapter_id, "unresolved": unresolved,
+                "total": len(threads), "comments": threads}

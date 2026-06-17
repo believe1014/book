@@ -112,3 +112,20 @@ class ContentPatchIn(BaseModel):
 class MediaLinkIn(BaseModel):
     url: str
     type: str = "link"
+
+
+# ---------- Comments (review) ----------
+class CommentCreateIn(BaseModel):
+    body: str = Field(default="", max_length=5000)
+    parent_id: Optional[int] = None
+    image_url: Optional[str] = None
+
+    @field_validator("body")
+    @classmethod
+    def non_empty(cls, v):
+        return (v or "").strip()
+
+
+class CommentUpdateIn(BaseModel):
+    body: Optional[str] = Field(default=None, max_length=5000)
+    image_url: Optional[str] = None

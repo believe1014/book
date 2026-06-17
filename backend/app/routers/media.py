@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 from .. import errors
 from ..config import settings
 from ..database import get_session
-from ..deps import EDIT_ROLES, get_book_for_member, get_current_user
+from ..deps import COMMENT_ROLES, EDIT_ROLES, get_book_for_member, get_current_user
 from ..models import MediaAsset, User
 
 router = APIRouter(prefix="/api", tags=["media"])
@@ -85,8 +85,10 @@ async def upload_media(
     book, membership = get_book_for_member(session, book_id, user)
     if book.deleted_at is not None:
         raise errors.not_found("書籍不存在")
-    if membership.role not in EDIT_ROLES:
-        raise errors.forbidden("僅擁有者或編輯者可上傳素材")
+    # Reviewers may upload images for review comments (they still cannot edit
+    # content, so uploads can only surface inside comments for them).
+    if membership.role not in COMMENT_ROLES:
+        raise errors.forbidden("您的角色無法上傳素材")
 
     # External link (spec §6.5: links don't count toward quota)
     if url:
