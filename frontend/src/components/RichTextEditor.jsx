@@ -19,6 +19,17 @@ function blockToNode(el) {
       attrs: { src: el.getAttribute('src') || '', alt: el.getAttribute('alt') || '' },
     }
   }
+  // Code/diagram block (e.g. mermaid). Source text round-trips; the rendered
+  // preview (a .mermaid-preview sibling) is excluded in htmlToDoc.
+  if (tag === 'pre') {
+    const text = el.textContent || ''
+    const lang = el.getAttribute('data-lang') || ''
+    return {
+      type: 'codeBlock',
+      attrs: { language: lang },
+      ...(text ? { content: [{ type: 'text', text }] } : {}),
+    }
+  }
   let type = 'paragraph'
   const attrs = {}
   if (tag === 'h1' || tag === 'h2' || tag === 'h3') {
@@ -68,6 +79,8 @@ export function htmlToDoc(root) {
   const content = []
   root.childNodes.forEach((el) => {
     if (el.nodeType === Node.ELEMENT_NODE) {
+      // Skip rendered diagram previews — they're derived from the source block.
+      if (el.classList && el.classList.contains('mermaid-preview')) return
       content.push(blockToNode(el))
     } else if (el.nodeType === Node.TEXT_NODE && el.textContent.trim()) {
       content.push({ type: 'paragraph', content: [{ type: 'text', text: el.textContent }] })
@@ -110,6 +123,12 @@ function inlineToHtml(node) {
 
 function docNodeToHtml(node) {
   if (node.type === 'image') return imgToHtml(node)
+  if (node.type === 'codeBlock') {
+    const lang = node.attrs?.language || node.attrs?.lang || ''
+    const src = (node.content || []).map((n) => escapeHtml(n.text || '')).join('')
+    const cls = 'code-block' + (lang === 'mermaid' ? ' mermaid-src' : '')
+    return `<pre class="${cls}" data-lang="${escapeAttr(lang)}"><code>${src || '<br>'}</code></pre>`
+  }
   const inner = (node.content || []).map(inlineToHtml).join('')
   switch (node.type) {
     case 'heading': return `<h${node.attrs?.level || 2}>${inner || '<br>'}</h${node.attrs?.level || 2}>`
@@ -131,12 +150,14 @@ const RichTextEditor = forwardRef(function RichTextEditor(
 ) {
   const elRef = useRef(null)
   const lastHtml = useRef('')
+  const mermaidReady = useRef(false)
+  const mermaidTimer = useRef(null)
 
   useImperativeHandle(ref, () => ({
     getDoc: () => htmlToDoc(elRef.current),
     setDoc: (doc) => {
       const html = docToHtml(doc)
-      if (elRef.current) { elRef.current.innerHTML = html; lastHtml.current = html }
+      if (elRef.current) { elRef.current.innerHTML = html; lastHtml.current = html; setTimeout(renderMermaid, 0) }
     },
     insertImage: (url) => {
       elRef.current?.focus()
@@ -156,6 +177,7 @@ const RichTextEditor = forwardRef(function RichTextEditor(
       const html = docToHtml(initialDoc)
       elRef.current.innerHTML = html
       lastHtml.current = html
+      setTimeout(renderMermaid, 0)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -166,6 +188,57 @@ const RichTextEditor = forwardRef(function RichTextEditor(
       lastHtml.current = html
       onChange?.(htmlToDoc(elRef.current))
     }
+    if (mermaidTimer.current) clearTimeout(mermaidTimer.current)
+    mermaidTimer.current = setTimeout(renderMermaid, 600)
+  }
+
+  // Render every <pre class="mermaid-src"> into a non-editable preview sibling.
+  // Lazy-loads mermaid on first use; skips unchanged sources.
+  async function renderMermaid() {
+    const root = elRef.current
+    if (!root) return
+    // drop orphan previews (whose source block was deleted)
+    root.querySelectorAll('.mermaid-preview').forEach((p) => {
+      const prev = p.previousElementSibling
+      if (!prev || !prev.classList.contains('mermaid-src')) p.remove()
+    })
+    const blocks = root.querySelectorAll('pre.mermaid-src')
+    if (!blocks.length) return
+    let mermaid
+    try { mermaid = (await import('mermaid')).default } catch { return }
+    if (!mermaidReady.current) {
+      mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'neutral', fontFamily: 'inherit' })
+      mermaidReady.current = true
+    }
+    for (const pre of blocks) {
+      const src = (pre.textContent || '').trim()
+      let preview = pre.nextElementSibling
+      if (!preview || !preview.classList.contains('mermaid-preview')) {
+        preview = document.createElement('div')
+        preview.className = 'mermaid-preview'
+        preview.setAttribute('contenteditable', 'false')
+        pre.after(preview)
+      }
+      if (preview.getAttribute('data-src') === src) continue
+      preview.setAttribute('data-src', src)
+      if (!src) { preview.innerHTML = ''; continue }
+      try {
+        const { svg } = await mermaid.render('mmd-' + Math.random().toString(36).slice(2), src)
+        preview.innerHTML = svg
+      } catch {
+        preview.innerHTML = '<div class="mermaid-error">⚠ 圖表語法錯誤，請檢查 Mermaid 語法</div>'
+      }
+    }
+  }
+
+  function insertMermaid() {
+    if (readOnly) return
+    const sample = 'graph TD\n  A[開始] --> B[結束]'
+    elRef.current?.focus()
+    document.execCommand('insertHTML', false,
+      `<pre class="code-block mermaid-src" data-lang="mermaid"><code>${escapeHtml(sample)}</code></pre><p><br></p>`)
+    handleInput()
+    setTimeout(renderMermaid, 0)
   }
 
   function cmd(command, value) {
@@ -195,6 +268,8 @@ const RichTextEditor = forwardRef(function RichTextEditor(
             const url = prompt('輸入連結網址')
             if (url) cmd('createLink', url)
           }} title="連結">🔗</ToolBtn>
+          <Sep />
+          <ToolBtn onClick={insertMermaid} title="插入流程圖 (Mermaid)">📊</ToolBtn>
         </div>
       )}
       <div

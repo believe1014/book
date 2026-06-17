@@ -6,6 +6,7 @@ import AuthPage from './pages/AuthPage'
 import Bookshelf from './pages/Bookshelf'
 import Editor from './pages/Editor'
 import InviteLanding from './pages/InviteLanding'
+import GuidePage from './pages/GuidePage'
 
 function RequireAuth({ children }) {
   const { user, loading } = useAuth()
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="/login" element={<AuthPage mode="login" />} />
         <Route path="/register" element={<AuthPage mode="register" />} />
         <Route path="/invite/:token" element={<InviteLanding />} />
+        <Route path="/guide/reviewer" element={<GuidePage which="reviewer" />} />
         <Route path="/" element={<RequireAuth><Bookshelf /></RequireAuth>} />
         <Route path="/books/:id" element={<RequireAuth><Editor /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />

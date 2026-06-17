@@ -12,6 +12,7 @@ import MembersModal from '../components/MembersModal'
 import BookSettings from '../components/BookSettings'
 import VersionHistory from '../components/VersionHistory'
 import ExportModal from '../components/ExportModal'
+import HelpModal from '../components/HelpModal'
 import { useChapterSocket } from '../hooks/useChapterSocket'
 
 const MIN_COL = 180 // px, minimum draggable column width
@@ -41,6 +42,7 @@ export default function Editor() {
   const [showSettings, setShowSettings] = useState(false)
   const [showVersions, setShowVersions] = useState(false)
   const [showExport, setShowExport] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
 
   // Draggable column widths (FR: left/right resizable, each ≤ ½ total width).
   const [leftW, setLeftW] = useState(() => Number(localStorage.getItem('editor_leftW')) || 280)
@@ -244,6 +246,7 @@ export default function Editor() {
           <button className="btn btn-ghost btn-sm" onClick={() => setShowExport(true)} title="匯出全書或章節為 PDF / Markdown">⬇ 匯出</button>
           <button className="btn btn-ghost btn-sm" onClick={() => setShowMembers(true)}>分享</button>
           <button className="btn btn-ghost btn-sm" onClick={() => setShowSettings(true)}>⚙ 設定</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowHelp(true)} title="使用說明">❓ 幫助</button>
         </div>
       </header>
 
@@ -341,6 +344,7 @@ export default function Editor() {
         )}
       </div>
 
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
       {showExport && (
         <ExportModal
           book={book}

@@ -25,6 +25,11 @@ export default function CommentsPanel({ bookId, chapterId, canComment, currentUs
 
   return (
     <div>
+      <div className="spread" style={{ marginBottom: 8 }}>
+        <span className="text-xs muted">章節評論</span>
+        <a className="text-xs" href="/guide/reviewer" target="_blank" rel="noopener"
+          style={{ color: 'var(--brand-primary)', textDecoration: 'none' }}>❓ 審稿說明</a>
+      </div>
       {canComment && (
         <Composer bookId={bookId} chapterId={chapterId} onPosted={load} placeholder="新增評論…可附一張圖片＋說明" />
       )}

@@ -245,6 +245,24 @@ input, textarea, select {
 .col-resizer:hover::after, .col-resizer.dragging::after { background: var(--brand-primary); }
 body.col-resizing { cursor: col-resize; user-select: none; }
 
+/* ---------- In-app guide page ---------- */
+.guide h1 { font-size: 26px; margin: 0 0 12px; }
+.guide h2 { font-size: 20px; margin: 1.4em 0 .4em; padding-bottom: 4px; border-bottom: 1px solid var(--border-default); }
+.guide h3 { font-size: 17px; margin: 1.2em 0 .3em; }
+.guide p { margin: 0 0 .9em; }
+.guide ul, .guide ol { margin: 0 0 1em; padding-left: 1.6em; }
+.guide li { margin: .25em 0; }
+.guide blockquote {
+  border-left: 3px solid var(--brand-primary); margin: .8em 0; padding: 8px 16px;
+  background: var(--bg-subtle); color: var(--text-muted); border-radius: 0 6px 6px 0;
+}
+.guide code {
+  background: var(--bg-subtle); border: 1px solid var(--border-default);
+  border-radius: 4px; padding: 1px 5px; font-size: .9em;
+}
+.guide hr { border: none; border-top: 1px solid var(--border-default); margin: 1.6em 0; }
+.guide a { color: var(--brand-primary); text-decoration: underline; }
+
 /* ---------- Rich text editor ---------- */
 .rte-content:empty::before,
 .rte-content > p:only-child:empty::before {
@@ -263,6 +281,21 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 .rte-content ul, .rte-content ol { padding-left: 1.4em; margin: 0 0 0.8em; }
 .rte-content img { max-width: 100%; border-radius: var(--radius-md); margin: 0.5em 0; }
 .rte-content a { text-decoration: underline; }
+
+/* Code / mermaid blocks */
+.rte-content pre.code-block {
+  background: var(--bg-subtle); border: 1px solid var(--border-default);
+  border-radius: var(--radius-md); padding: 12px 14px; margin: 0.6em 0;
+  font-family: ui-monospace, Consolas, monospace; font-size: 13px; white-space: pre-wrap;
+  overflow-x: auto;
+}
+.rte-content pre.mermaid-src { color: var(--text-muted); }
+.mermaid-preview {
+  margin: 0.2em 0 0.8em; padding: 12px; text-align: center;
+  background: var(--bg-surface); border: 1px dashed var(--border-default); border-radius: var(--radius-md);
+}
+.mermaid-preview svg { max-width: 100%; height: auto; }
+.mermaid-error { color: var(--danger); font-size: 13px; }
 
 /* tree menu button shows on hover */
 .tree-menu-btn { opacity: 0; padding: 0 4px; background: none; border: none; color: var(--text-muted); font-size: 16px; }

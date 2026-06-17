@@ -79,6 +79,8 @@ export default function MembersModal({ bookId, myRole, onClose }) {
             </select>
           </div>
           <button className="btn btn-primary" onClick={invite} disabled={busy || !email}>送出邀請</button>
+          <a className="text-xs" href="/guide/reviewer" target="_blank" rel="noopener"
+            style={{ display: 'inline-block', marginLeft: 12, color: 'var(--brand-primary)' }}>❓ 審稿人員指南</a>
         </div>
       )}
 
