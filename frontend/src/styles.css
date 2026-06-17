@@ -225,6 +225,26 @@ input, textarea, select {
   * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
 }
 
+/* ---------- Spinner ---------- */
+.spinner {
+  display: inline-block; width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--border-default); border-top-color: var(--brand-primary);
+  animation: spin .7s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- Draggable column resizer ---------- */
+.col-resizer {
+  flex: 0 0 6px; width: 6px; cursor: col-resize; background: transparent;
+  position: relative; z-index: 6; align-self: stretch;
+}
+.col-resizer::after {
+  content: ''; position: absolute; inset: 0 2px; border-radius: 2px; background: transparent;
+  transition: background .12s;
+}
+.col-resizer:hover::after, .col-resizer.dragging::after { background: var(--brand-primary); }
+body.col-resizing { cursor: col-resize; user-select: none; }
+
 /* ---------- Rich text editor ---------- */
 .rte-content:empty::before,
 .rte-content > p:only-child:empty::before {

@@ -10,7 +10,10 @@ import MediaPanel from '../components/MediaPanel'
 import MembersModal from '../components/MembersModal'
 import BookSettings from '../components/BookSettings'
 import VersionHistory from '../components/VersionHistory'
+import ExportModal from '../components/ExportModal'
 import { useChapterSocket } from '../hooks/useChapterSocket'
+
+const MIN_COL = 180 // px, minimum draggable column width
 
 const EDIT_ROLES = new Set(['owner', 'editor'])
 const AUTOSAVE_MS = 2000 // FR-41: debounce 2s
@@ -35,11 +38,46 @@ export default function Editor() {
   const [showMembers, setShowMembers] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showVersions, setShowVersions] = useState(false)
+  const [showExport, setShowExport] = useState(false)
+
+  // Draggable column widths (FR: left/right resizable, each ≤ ½ total width).
+  const [leftW, setLeftW] = useState(() => Number(localStorage.getItem('editor_leftW')) || 280)
+  const [rightW, setRightW] = useState(() => Number(localStorage.getItem('editor_rightW')) || 320)
+  const leftWRef = useRef(leftW)
+  const rightWRef = useRef(rightW)
+  const layoutRef = useRef(null)
 
   const editorRef = useRef(null)
   const saveTimer = useRef(null)
   const versionRef = useRef(1)
   const pendingDoc = useRef(null)
+
+  function startColDrag(side, e) {
+    e.preventDefault()
+    const container = layoutRef.current
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    const maxW = rect.width / 2 // never exceed half the total width
+    const handleEl = e.currentTarget
+    handleEl.classList.add('dragging')
+    document.body.classList.add('col-resizing')
+    function onMove(ev) {
+      const raw = side === 'left' ? ev.clientX - rect.left : rect.right - ev.clientX
+      const w = Math.max(MIN_COL, Math.min(maxW, raw))
+      if (side === 'left') { leftWRef.current = w; setLeftW(w) }
+      else { rightWRef.current = w; setRightW(w) }
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      handleEl.classList.remove('dragging')
+      document.body.classList.remove('col-resizing')
+      localStorage.setItem('editor_leftW', String(Math.round(leftWRef.current)))
+      localStorage.setItem('editor_rightW', String(Math.round(rightWRef.current)))
+    }
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+  }
 
   const canEditRole = EDIT_ROLES.has(myRole)
   const selectedChapter = findChapter(chapters, selectedId)
@@ -193,15 +231,16 @@ export default function Editor() {
           <Presence users={presence} />
           <SaveIndicator status={saveStatus} />
           {selectedId && <button className="btn btn-ghost btn-sm" onClick={() => setShowVersions(true)}>版本歷史</button>}
+          <button className="btn btn-ghost btn-sm" onClick={() => setShowExport(true)} title="匯出全書或章節為 PDF / Markdown">⬇ 匯出</button>
           <button className="btn btn-ghost btn-sm" onClick={() => setShowMembers(true)}>分享</button>
           <button className="btn btn-ghost btn-sm" onClick={() => setShowSettings(true)}>⚙ 設定</button>
         </div>
       </header>
 
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <div ref={layoutRef} style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {/* Left: chapter tree */}
         {!leftCollapsed && (
-          <aside style={leftCol}>
+          <aside style={{ ...leftCol, width: leftW }}>
             <div className="spread" style={{ marginBottom: 12 }}>
               <span className="text-sm muted">章節</span>
               <button className="btn btn-ghost btn-sm" onClick={() => setLeftCollapsed(true)} title="收合">⟨</button>
@@ -216,6 +255,10 @@ export default function Editor() {
               coEditingMap={coEditingMap}
             />
           </aside>
+        )}
+        {!leftCollapsed && (
+          <div className="col-resizer" onMouseDown={(e) => startColDrag('left', e)}
+            role="separator" aria-orientation="vertical" aria-label="調整左欄寬度" title="拖曳調整左欄寬度" />
         )}
         {leftCollapsed && (
           <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start', margin: 8 }} onClick={() => setLeftCollapsed(false)} title="展開章節">☰</button>
@@ -258,8 +301,12 @@ export default function Editor() {
         </main>
 
         {/* Right: info panel */}
+        {!rightCollapsed && (
+          <div className="col-resizer" onMouseDown={(e) => startColDrag('right', e)}
+            role="separator" aria-orientation="vertical" aria-label="調整右欄寬度" title="拖曳調整右欄寬度" />
+        )}
         {!rightCollapsed ? (
-          <aside style={rightColStyle}>
+          <aside style={{ ...rightColStyle, width: rightW }}>
             <div className="spread" style={{ marginBottom: 12 }}>
               <div className="row gap-2">
                 <button className="btn btn-sm" style={rightTab === 'stats' ? activeTab : tab} onClick={() => setRightTab('stats')}>統計</button>
@@ -278,6 +325,15 @@ export default function Editor() {
         )}
       </div>
 
+      {showExport && (
+        <ExportModal
+          book={book}
+          chapters={chapters}
+          selectedId={selectedId}
+          selectedTitle={selectedChapter?.title}
+          onClose={() => setShowExport(false)}
+        />
+      )}
       {showMembers && <MembersModal bookId={bookId} myRole={myRole} onClose={() => setShowMembers(false)} />}
       {showSettings && <BookSettings book={book} myRole={myRole} onClose={() => setShowSettings(false)} onUpdated={setBook} />}
       {showVersions && selectedId && (
