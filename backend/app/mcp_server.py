@@ -7,6 +7,7 @@ POST /api/auth/login). Permission checks reuse the app's role matrix, so an MCP
 caller can only touch books they are a member of.
 """
 import json
+import re
 from typing import Optional
 
 from sqlmodel import Session, select
@@ -27,7 +28,7 @@ from .models import (
     Book, BookMember, Chapter, ChapterContent, Comment, ContentVersion, User, utcnow,
 )
 from .routers.content import _get_or_create_content, _prune_versions
-from .services.wordcount import count_words, extract_text
+from .services.wordcount import count_words
 
 _allowed_hosts = [h.strip() for h in settings.mcp_allowed_hosts.split(",") if h.strip()]
 if _allowed_hosts:
@@ -102,15 +103,85 @@ def _require_edit(membership: BookMember) -> None:
 
 
 # ---------- content <-> plain text ----------
+# Opening fence of a code block, optionally with a language tag, e.g. ```mermaid
+_FENCE_OPEN_RE = re.compile(r"^```([A-Za-z0-9_+-]*)\s*$")
+_FENCE_CLOSE = "```"
+
+
 def _text_to_doc(text: str) -> dict:
-    """Build a minimal ProseMirror-style doc from plain text (one para/line)."""
+    """Build a minimal ProseMirror-style doc from plain text (one para/line).
+
+    Fenced code blocks delimited by ``` (optionally with a language, e.g.
+    ```mermaid) are collapsed into a single ``codeBlock`` node so the editor can
+    render them — Mermaid diagrams in particular. An opening fence with no
+    matching closing fence is treated as ordinary text.
+    """
     nodes = []
-    for line in (text or "").split("\n"):
+    lines = (text or "").split("\n")
+    i, n = 0, len(lines)
+    while i < n:
+        line = lines[i]
+        m = _FENCE_OPEN_RE.match(line.strip())
+        if m:
+            # Scan for the closing fence.
+            j = i + 1
+            while j < n and lines[j].strip() != _FENCE_CLOSE:
+                j += 1
+            if j < n:  # matched fence pair -> one code block
+                body = "\n".join(lines[i + 1:j])
+                node = {"type": "codeBlock", "attrs": {"language": m.group(1)}}
+                if body:
+                    node["content"] = [{"type": "text", "text": body}]
+                nodes.append(node)
+                i = j + 1
+                continue
+            # No closing fence: fall through and treat as a normal paragraph.
         node = {"type": "paragraph"}
         if line.strip():
             node["content"] = [{"type": "text", "text": line}]
         nodes.append(node)
+        i += 1
     return {"type": "doc", "content": nodes or [{"type": "paragraph"}]}
+
+
+def _doc_to_text(content_json: str) -> str:
+    """Serialize a doc back to plain text, mirroring ``extract_text`` but
+    wrapping code blocks in ``` fences so a read -> edit -> write round-trip
+    through this MCP preserves Mermaid/code blocks."""
+    try:
+        doc = json.loads(content_json) if content_json else {}
+    except (json.JSONDecodeError, TypeError):
+        return ""
+
+    parts: list[str] = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            ntype = node.get("type")
+            if ntype == "codeBlock":
+                attrs = node.get("attrs") or {}
+                lang = attrs.get("language") or attrs.get("lang") or ""
+                body = "".join(
+                    c.get("text", "") for c in (node.get("content") or [])
+                    if isinstance(c, dict) and c.get("type") == "text"
+                )
+                parts.append(f"```{lang}\n{body}\n```\n")
+                return
+            if ntype == "text" and isinstance(node.get("text"), str):
+                parts.append(node["text"])
+            for child in node.get("content", []) or []:
+                walk(child)
+            if ntype in {
+                "paragraph", "heading", "blockquote", "listItem",
+                "bulletList", "orderedList",
+            }:
+                parts.append("\n")
+        elif isinstance(node, list):
+            for child in node:
+                walk(child)
+
+    walk(doc)
+    return "".join(parts)
 
 
 def _chapter_tree(session: Session, book_id: int) -> list[dict]:
@@ -282,7 +353,7 @@ def get_chapter_content(ctx: Context, chapter_id: int) -> dict:
         content = _get_or_create_content(session, chapter_id)
         return {
             "chapter_id": chapter_id,
-            "text": extract_text(content.content_json).strip(),
+            "text": _doc_to_text(content.content_json).strip(),
             "word_count": content.word_count,
             "version": content.version,
             "updated_at": content.updated_at,
