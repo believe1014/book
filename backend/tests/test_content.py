@@ -289,7 +289,7 @@ def test_lock_acquire_and_release_endpoints(client, auth, user_factory):
     # owner 釋放鎖
     r3 = client.delete(f"/api/chapters/{ch['id']}/lock", headers=auth["headers"])
     assert r3.status_code == 200, r3.text
-    assert r3.json()["data"]["success"] is True
+    assert r3.json()["data"]["released"] is True  # Q3：本人持鎖，確實釋放
 
     # 鎖釋放後他人可搶到
     r4 = client.post(f"/api/chapters/{ch['id']}/lock", headers=editor["headers"])

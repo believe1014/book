@@ -8,7 +8,7 @@
 - 鎖的持有者可重複取鎖（等同 refresh，不受自己鎖阻擋）
 - 釋放鎖：持有者釋放後，他人可取得
 - 非持有者呼叫釋放：對他人的鎖無效（lock_manager 內部以 user_id 比對），
-  但端點目前不論是否真的釋放到東西都回傳 success:true —— 記錄現況於報告
+  Q3 後端點回應 released 反映實際結果（本人持鎖才 True），不再誤導性恆回成功
 - 權限矩陣：取鎖僅 EDIT_ROLES（reviewer/viewer 403）；釋放鎖端點本身未限制
   角色（見報告），但因 lock_manager.release() 內部仍以 user_id 比對持有者，
   非持有者呼叫不會真的清除他人的鎖（無安全漏洞，僅回應語意可能誤導）
@@ -115,7 +115,7 @@ def test_release_lock_by_holder_frees_it_for_others(client, auth, user_factory):
     _acquire(client, auth["headers"], ch["id"])
     r = _release(client, auth["headers"], ch["id"])
     assert r.status_code == 200, r.text
-    assert r.json()["data"]["success"] is True
+    assert r.json()["data"]["released"] is True  # Q3：本人持鎖，確實釋放
 
     # 鎖已釋放，GET content 應顯示 lock=None
     r_content = client.get(f"/api/chapters/{ch['id']}/content", headers=auth["headers"])
@@ -128,10 +128,9 @@ def test_release_lock_by_holder_frees_it_for_others(client, auth, user_factory):
 
 
 def test_release_lock_by_non_holder_does_not_release_others_lock(client, auth, user_factory):
-    """非持有者呼叫釋放：端點目前一律回 200 success:true（未檢查是否真的釋放
-    到東西），但 lock_manager.release() 內部仍以 user_id 比對，實際上不會
-    清除他人持有的鎖。此測試記錄現況：回應語意可能誤導呼叫端（見報告），
-    但不構成可讓非持有者搶奪/清除他人鎖的安全漏洞。
+    """非持有者呼叫釋放：lock_manager.release() 內部以 user_id 比對，實際不會
+    清除他人持有的鎖。Q3 後端點回應反映實際結果 released=False（不再誤導性地
+    恆回 success:true）；維持「僅持有者能真正釋放」語意，無安全漏洞。
     """
     book_id = _create_book(client, auth)
     ch = _create_chapter(client, auth["headers"], book_id)
@@ -141,19 +140,19 @@ def test_release_lock_by_non_holder_does_not_release_others_lock(client, auth, u
 
     r = _release(client, editor["headers"], ch["id"])  # 非持有者呼叫釋放
     assert r.status_code == 200, r.text
-    assert r.json()["data"]["success"] is True  # 現況：回應恆為成功
+    assert r.json()["data"]["released"] is False  # Q3：未持鎖，實際未釋放
 
     # 但鎖實際上仍由 owner 持有，其他人仍無法取得
     r2 = _acquire(client, editor["headers"], ch["id"])
     assert r2.status_code == 423, r2.text
 
 
-def test_release_lock_when_none_held_still_returns_success(client, auth):
+def test_release_lock_when_none_held_returns_released_false(client, auth):
     book_id = _create_book(client, auth)
     ch = _create_chapter(client, auth["headers"], book_id)
     r = _release(client, auth["headers"], ch["id"])
     assert r.status_code == 200, r.text
-    assert r.json()["data"]["success"] is True
+    assert r.json()["data"]["released"] is False  # Q3：無鎖可釋放
 
 
 # ---------- 權限矩陣 ----------

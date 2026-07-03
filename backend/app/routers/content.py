@@ -163,9 +163,12 @@ def release_lock(
     session: Session = Depends(get_session),
 ):
     chapter, book, membership = resolve_chapter_book(session, chapter_id, user)
-    lock_manager.release(chapter_id, user.id)
-    _broadcast_safe(chapter_id, {"type": "lock_changed", "lock_owner": None})
-    return {"data": {"success": True}}
+    # Q3: 回應反映實際結果 —— released 表示是否真的釋放到本人持有的鎖。
+    # lock_manager.release 回傳 bool（僅持有者能釋放，維持既有語意）。
+    released = lock_manager.release(chapter_id, user.id)
+    if released:
+        _broadcast_safe(chapter_id, {"type": "lock_changed", "lock_owner": None})
+    return {"data": {"released": released}}
 
 
 # ---------- Versions (spec §5.7) ----------
