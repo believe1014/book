@@ -57,6 +57,62 @@ def _book_dict(session: Session, book: Book) -> dict:
     }
 
 
+def _book_dicts_batch(session: Session, books: list[Book]) -> list[dict]:
+    """批次序列化多本書，消除 `_book_dict` 逐本查詢的 N+1（效能設計 P1）。
+
+    行為與 `[_book_dict(session, b) for b in books]` 逐欄位相同，但查詢數為常數：
+    一次撈全部未軟刪 chapters、一次撈這些 chapter 的 contents，其餘於記憶體聚合。
+    輸出順序與傳入 `books` 完全一致。
+    """
+    book_ids = [b.id for b in books]
+    # book_id -> 該書未軟刪章節清單
+    chapters_by_book: dict[int, list[Chapter]] = {bid: [] for bid in book_ids}
+    all_chapter_ids: list[int] = []
+    if book_ids:
+        chapters = session.exec(
+            select(Chapter).where(
+                Chapter.book_id.in_(book_ids), Chapter.deleted_at == None  # noqa: E711
+            )
+        ).all()
+        for ch in chapters:
+            chapters_by_book[ch.book_id].append(ch)
+            all_chapter_ids.append(ch.id)
+    # chapter_id -> word_count（chapter_id 於 ChapterContent 唯一，至多一筆內容）
+    words_by_chapter: dict[int, int] = {}
+    if all_chapter_ids:
+        contents = session.exec(
+            select(ChapterContent).where(
+                ChapterContent.chapter_id.in_(all_chapter_ids)
+            )
+        ).all()
+        for c in contents:
+            words_by_chapter[c.chapter_id] = c.word_count
+
+    out: list[dict] = []
+    for book in books:
+        chapters = chapters_by_book.get(book.id, [])
+        # 與 _book_dict 一致：字數＝各章內容 word_count 加總（無內容者計 0）
+        total_words = sum(words_by_chapter.get(c.id, 0) for c in chapters)
+        completed = sum(1 for c in chapters if c.status == "done")
+        progress = round(completed / len(chapters), 4) if chapters else 0.0
+        out.append({
+            "id": book.id,
+            "title": book.title,
+            "description": book.description,
+            "cover_url": book.cover_url,
+            "status": book.status,
+            "tags": json.loads(book.tags) if book.tags else [],
+            "word_count_goal": book.word_count_goal,
+            "word_count": total_words,
+            "progress": progress,
+            "owner_id": book.owner_id,
+            "created_at": book.created_at,
+            "updated_at": book.updated_at,
+            "deleted_at": book.deleted_at,
+        })
+    return out
+
+
 # ---------- Books CRUD ----------
 @router.get("/books", response_model=None)
 def list_books(
@@ -91,7 +147,7 @@ def list_books(
     else:  # updated_at default
         books.sort(key=lambda b: b.updated_at, reverse=True)
 
-    items = [_book_dict(session, b) for b in books]
+    items = _book_dicts_batch(session, books)
     return {"data": {"items": items, "total": len(items)}}
 
 
@@ -140,11 +196,11 @@ def list_trash(
             Book.id.in_(member_book_ids), Book.deleted_at != None  # noqa: E711
         )
     ).all()
+    dicts = _book_dicts_batch(session, books)
     items = []
-    for b in books:
+    for b, d in zip(books, dicts):
         deleted = datetime.fromisoformat(b.deleted_at)
         remaining = settings.restore_window_days - (datetime.now(timezone.utc) - deleted).days
-        d = _book_dict(session, b)
         d["days_remaining"] = max(0, remaining)
         items.append(d)
     return {"data": {"items": items}}
