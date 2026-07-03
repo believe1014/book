@@ -21,6 +21,7 @@ from app import models  # noqa: E402,F401  — 確保所有資料表註冊進 me
 from app.database import engine, init_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.services.locks import lock_manager  # noqa: E402
+from app.services.rate_limit import login_rate_limiter  # noqa: E402
 
 init_db()
 
@@ -44,9 +45,12 @@ def _reset_db(client):
     SQLModel.metadata.create_all(engine)
     if hasattr(lock_manager, "_locks"):
         lock_manager._locks.clear()
+    # S3：清空行程級登入限流狀態，避免跨測試污染既有登入測試。
+    login_rate_limiter.clear()
     yield
     if hasattr(lock_manager, "_locks"):
         lock_manager._locks.clear()
+    login_rate_limiter.clear()
 
 
 def _register(client, email, password, name):

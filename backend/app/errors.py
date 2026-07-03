@@ -45,6 +45,10 @@ def locked(message="章節編輯權被他人持有"):
     return APIError(423, "LOCKED", message)
 
 
+def too_many_requests(message="嘗試次數過多，請稍後再試"):
+    return APIError(429, "TOO_MANY_REQUESTS", message)
+
+
 def _envelope(code: str, message: str):
     return {"error": {"code": code, "message": message}}
 
@@ -57,7 +61,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     code_map = {
         400: "BAD_REQUEST", 401: "UNAUTHORIZED", 403: "FORBIDDEN",
         404: "NOT_FOUND", 409: "CONFLICT", 410: "GONE",
-        413: "PAYLOAD_TOO_LARGE", 423: "LOCKED", 500: "INTERNAL_ERROR",
+        413: "PAYLOAD_TOO_LARGE", 423: "LOCKED", 429: "TOO_MANY_REQUESTS",
+        500: "INTERNAL_ERROR",
     }
     code = code_map.get(exc.status_code, "INTERNAL_ERROR")
     return JSONResponse(status_code=exc.status_code, content=_envelope(code, str(exc.detail)))
