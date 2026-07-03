@@ -17,11 +17,14 @@ from .errors import (
 )
 from .mcp_server import mcp_server
 from .routers import auth, books, chapters, comments, content, media, ws
+from .security_checks import assert_secure_config
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # S2: 拒絕以不安全的 JWT 設定在 production 啟動（fail-fast）。
+    assert_secure_config(settings)
     os.makedirs(settings.storage_dir, exist_ok=True)
     # Run the MCP streamable-HTTP session manager for the app's lifetime
     # (the mounted sub-app's own lifespan is not invoked by the parent).

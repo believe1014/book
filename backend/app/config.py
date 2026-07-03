@@ -11,12 +11,20 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parent.parent  # backend/
 
+# 預設開發用 JWT 密鑰（原始碼公開）。生產環境必須以 BOOK_JWT_SECRET 覆寫；
+# security_checks.assert_secure_config 會在 production 仍為此值時拒絕啟動。
+DEFAULT_JWT_SECRET = "dev-secret-change-me-in-production-please"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="BOOK_", env_file=".env", extra="ignore")
 
+    # 部署環境：development / production（env: BOOK_ENVIRONMENT）。
+    # production 時會啟用安全設定 fail-fast 檢查（見 security_checks）。
+    environment: str = "development"
+
     # Auth / JWT
-    jwt_secret: str = "dev-secret-change-me-in-production-please"
+    jwt_secret: str = DEFAULT_JWT_SECRET
     jwt_algorithm: str = "HS256"
     jwt_expire_hours: int = 24  # spec FR-02: 24h access token
 
