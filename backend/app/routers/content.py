@@ -4,7 +4,6 @@ Content PATCH bumps version, writes a version snapshot, recomputes word count
 (spec FR-42/43, §4.3) and enforces soft-lock (FR-44, 423) + version conflict
 (409, §6.2).
 """
-import asyncio
 import json
 
 from fastapi import APIRouter, Depends
@@ -132,13 +131,12 @@ def _prune_versions(session: Session, chapter_id: int) -> None:
 
 
 def _broadcast_safe(chapter_id: int, message: dict) -> None:
-    """Fire-and-forget broadcast from sync context."""
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.create_task(room_manager.broadcast(chapter_id, message))
-    except RuntimeError:
-        pass
+    """Fire-and-forget broadcast from sync context.
+
+    同步端點在 threadpool worker thread 執行，無執行中事件迴圈；委派給
+    room_manager.broadcast_threadsafe 以主迴圈參照排入廣播（Q1）。
+    """
+    room_manager.broadcast_threadsafe(chapter_id, message)
 
 
 # ---------- Locks (spec §5.6) ----------

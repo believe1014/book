@@ -1,4 +1,5 @@
 """FastAPI entry point for 協作撰書系統 backend (spec §8.1/8.2)."""
+import asyncio
 import os
 from contextlib import asynccontextmanager
 
@@ -26,6 +27,9 @@ async def lifespan(app: FastAPI):
     # S2: 拒絕以不安全的 JWT 設定在 production 啟動（fail-fast）。
     assert_secure_config(settings)
     os.makedirs(settings.storage_dir, exist_ok=True)
+    # Q1: 記錄主事件迴圈，供同步端點以 run_coroutine_threadsafe 排入 WS 廣播。
+    from .services.ws_manager import room_manager
+    room_manager.set_loop(asyncio.get_running_loop())
     # Run the MCP streamable-HTTP session manager for the app's lifetime
     # (the mounted sub-app's own lifespan is not invoked by the parent).
     async with mcp_server.session_manager.run():

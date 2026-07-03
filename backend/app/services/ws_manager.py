@@ -20,6 +20,30 @@ class RoomManager:
     def __init__(self):
         self._rooms: dict[int, list[Connection]] = {}
         self._lock = asyncio.Lock()
+        # 主事件迴圈參照（WS 連線所在）。同步端點在 worker thread 內無執行中
+        # 迴圈，需透過此參照以 run_coroutine_threadsafe 排入廣播（Q1）。
+        self._loop = None
+
+    def set_loop(self, loop):
+        """記錄主事件迴圈；於 app lifespan 啟動時呼叫（main.py）。"""
+        self._loop = loop
+
+    def broadcast_threadsafe(self, chapter_id: int, message: dict[str, Any]):
+        """從同步端點（threadpool worker thread，無執行中迴圈）安全觸發廣播。
+
+        fire-and-forget：將 broadcast() 排入主迴圈，不呼叫 .result() 阻塞。
+        無 loop（例如尚未啟動或非伺服器情境）時為安全 no-op。
+        """
+        loop = self._loop
+        if loop is None:
+            return
+        try:
+            import asyncio as _asyncio
+            _asyncio.run_coroutine_threadsafe(
+                self.broadcast(chapter_id, message), loop
+            )
+        except Exception:
+            pass  # 廣播為盡力而為，不可讓其錯誤影響請求主流程
 
     async def connect(self, chapter_id: int, conn: Connection):
         async with self._lock:

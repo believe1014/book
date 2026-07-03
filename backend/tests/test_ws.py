@@ -21,18 +21,16 @@ lock_changed(None) + 最新 presence 給房間內其餘連線。
   cursor relay、以及斷線時的 lock 釋放廣播）確實會送達其他連線中的 client，
   因為這些呼叫發生在原本就是 async 的 WebSocket handler 內，與 TestClient
   共用同一個事件迴圈（portal）。
-- 但 content.py 的 patch_content / acquire_lock / release_lock 是「同步」
-  （def，非 async def）的 HTTP 端點，FastAPI 會將其丟到 worker thread 執行；
-  該 thread 內呼叫 `asyncio.get_event_loop()`（見 content.py `_broadcast_safe`）
-  在沒有執行中事件迴圈的 worker thread 會丟出 RuntimeError，而
-  `_broadcast_safe` 用 `except RuntimeError: pass` 靜默吞掉例外 ——
-  也就是說，經由 HTTP PATCH /content、POST /lock、DELETE /lock、
-  POST /versions/{ver}/restore 觸發的 content_updated / lock_changed 廣播
-  在目前實作下「幾乎必定不會送達」任何已連線的 WS client（已用探測腳本
-  實測確認：PATCH content 後，已連線 WS client 在 3 秒逾時內收不到任何
-  content_updated 訊息）。這是本次測試發現的疑似 bug，詳見報告，測試中
-  以 `test_http_triggered_*_broadcast_does_not_reach_ws_client_known_bug`
-  斷言「現況」（收不到訊息），不修改 production 程式碼。
+- content.py 的 patch_content / acquire_lock / release_lock 是「同步」
+  （def，非 async def）的 HTTP 端點，FastAPI 會將其丟到 worker thread 執行，
+  該 thread 內沒有執行中的事件迴圈。舊實作的 `_broadcast_safe` 以
+  `asyncio.get_event_loop()` 取迴圈會拋 RuntimeError 並被靜默吞掉，導致經由
+  HTTP PATCH /content、POST /lock、DELETE /lock、POST /versions/{ver}/restore
+  觸發的 content_updated / lock_changed 廣播從不送達 WS client（原 known-bug）。
+- Q1 修復：RoomManager 於 lifespan 記錄主事件迴圈（set_loop），`_broadcast_safe`
+  改委派 broadcast_threadsafe，以 `asyncio.run_coroutine_threadsafe` 將廣播排入
+  主迴圈（fire-and-forget）。以下 `test_http_triggered_*_reaches_ws_client`
+  即斷言「修復後」行為：REST 端點觸發後，已連線 WS client 在逾時內收到廣播。
 """
 import json
 import queue as _queue
@@ -98,6 +96,26 @@ def _recv(ws, timeout: float = 3.0):
     if message["type"] == "websocket.close":
         return {"__closed__": message.get("code")}
     return json.loads(message["text"])
+
+
+def _recv_until(ws, target_type: str, timeout: float = 3.0):
+    """在總逾時內持續接收，回傳第一則 type == target_type 的訊息。
+
+    跳過其間夾雜的 presence 等前置/無關訊息；逾時內未收到目標型別則回 None。
+    用於驗證「經 REST 觸發的廣播確實送達 WS client」（Q1）。
+    """
+    import time as _time
+
+    deadline = _time.monotonic() + timeout
+    while True:
+        remaining = deadline - _time.monotonic()
+        if remaining <= 0:
+            return None
+        msg = _recv(ws, timeout=remaining)
+        if msg is None:
+            return None
+        if isinstance(msg, dict) and msg.get("type") == target_type:
+            return msg
 
 
 # ---------- 認證 / 權限：連線階段 ----------
@@ -398,18 +416,15 @@ def test_ws_disconnect_does_not_release_lock_held_by_someone_else(client, auth, 
     assert holder == editor["user"]["id"]
 
 
-# ---------- 疑似 bug：HTTP 端點觸發的廣播無法送達 WS client ----------
+# ---------- Q1 修復：REST 端點觸發的廣播確實送達 WS client ----------
 
 
-def test_http_triggered_content_updated_broadcast_does_not_reach_ws_client_known_bug(
-    client, auth
-):
-    """疑似 bug（詳見檔案開頭說明與報告）：PATCH /chapters/{id}/content 是同步
-    （def）端點，其 `_broadcast_safe` 內 `asyncio.get_event_loop()` 在
-    FastAPI 用來執行同步端點的 worker thread 中沒有執行中的事件迴圈，會拋出
-    RuntimeError 並被靜默吞掉，導致 content_updated 事件實務上幾乎不會送達
-    任何已連線的 WS client。此測試斷言「現況」（逾時內收不到訊息），
-    而非期望行為 —— 若未來修好這個問題，此測試需要更新為期待收到訊息。
+def test_http_triggered_content_updated_broadcast_reaches_ws_client(client, auth):
+    """Q1 修復驗收：PATCH /chapters/{id}/content 是同步（def）端點，經
+    room_manager.broadcast_threadsafe（run_coroutine_threadsafe 排入主迴圈）
+    後，已連線的 WS client 應在逾時內收到 content_updated 廣播。
+    修復前：`_broadcast_safe` 內 `asyncio.get_event_loop()` 在 worker thread
+    無執行中迴圈而拋 RuntimeError 被吞掉，訊息從不送達。
     """
     book_id = _create_book(client, auth)
     ch = _create_chapter(client, auth["headers"], book_id)
@@ -429,19 +444,17 @@ def test_http_triggered_content_updated_broadcast_does_not_reach_ws_client_known
         )
         assert r.status_code == 200, r.text
 
-        msg = _recv(ws, timeout=3)
-        assert msg is None, (
-            "現況已改變：PATCH content 後 WS client 收到了訊息 "
-            f"({msg!r})；若此為預期修復，請更新本測試斷言"
-        )
+        msg = _recv_until(ws, "content_updated", timeout=3)
+        assert msg is not None, "WS client 未在逾時內收到 content_updated 廣播"
+        assert msg["type"] == "content_updated"
+        assert msg["version"] == 2  # 初始 version 1 -> PATCH 後 2
 
 
-def test_http_triggered_lock_changed_broadcast_does_not_reach_ws_client_known_bug(
+def test_http_triggered_lock_changed_broadcast_reaches_ws_client(
     client, auth, user_factory
 ):
-    """同上一個已知缺口：POST/DELETE /chapters/{id}/lock 也是同步端點，
-    其 lock_changed 廣播同樣受 `_broadcast_safe` 的 RuntimeError 吞噬影響，
-    不會送達已連線的 WS client（僅記錄現況，不代表這是刻意設計）。
+    """Q1 修復驗收：另一使用者經 REST POST /chapters/{id}/lock 取得鎖後，
+    已連線的 WS client 應在逾時內收到 lock_changed 廣播（lock_owner 為取得者）。
     """
     book_id = _create_book(client, auth)
     ch = _create_chapter(client, auth["headers"], book_id)
@@ -449,13 +462,11 @@ def test_http_triggered_lock_changed_broadcast_does_not_reach_ws_client_known_bu
 
     with client.websocket_connect(_ws_url(ch["id"], editor["token"])) as ws:
         _recv(ws)  # presence
-        _recv(ws)  # lock_changed
+        _recv(ws)  # lock_changed（初始 None）
 
         r = client.post(f"/api/chapters/{ch['id']}/lock", headers=auth["headers"])
         assert r.status_code == 200, r.text
 
-        msg = _recv(ws, timeout=3)
-        assert msg is None, (
-            "現況已改變：POST /lock 後 WS client 收到了訊息 "
-            f"({msg!r})；若此為預期修復，請更新本測試斷言"
-        )
+        msg = _recv_until(ws, "lock_changed", timeout=3)
+        assert msg is not None, "WS client 未在逾時內收到 lock_changed 廣播"
+        assert msg == {"type": "lock_changed", "lock_owner": auth["user"]["id"]}
