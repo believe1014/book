@@ -40,3 +40,21 @@ def test_me_requires_auth(client):
 def test_me_rejects_bad_token(client):
     r = client.get("/api/auth/me", headers={"Authorization": "Bearer garbage.token"})
     assert r.status_code == 401
+
+
+# ── S4：註冊密碼最小長度 8 ───────────────────────────────────────────────────
+def test_register_short_password_rejected(client):
+    r = client.post(
+        "/api/auth/register",
+        json={"email": "short@test.com", "password": "1234567", "name": "short"},
+    )
+    # 既有 validation handler 把 pydantic 驗證錯誤轉為 400。
+    assert r.status_code == 400, r.text
+
+
+def test_register_min_length_password_ok(client):
+    r = client.post(
+        "/api/auth/register",
+        json={"email": "okpw@test.com", "password": "12345678", "name": "okpw"},
+    )
+    assert r.status_code == 200, r.text
