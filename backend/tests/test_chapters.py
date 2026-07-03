@@ -94,14 +94,12 @@ def test_create_chapter_third_level_rejected(client, auth):
     assert r.status_code == 400, r.text  # 最多支援兩層結構
 
 
-def test_create_chapter_blank_title_not_rejected(client, auth):
-    """疑似 bug：books.py 的 create_book 對 strip 後的空標題會回 400，但
-    chapters.py 的 create_chapter 沒有相同檢查，空白標題會被接受並儲存為
-    空字串。此測試記錄現況行為（200 + title==""），非預期正確行為。"""
+def test_create_chapter_blank_title_rejected(client, auth):
+    """Q2：create_chapter 與 books.py::create_book 一致，strip 後為空的
+    標題應回 400（不再被接受為空字串）。"""
     book_id = _create_book(client, auth)
     r = _create_chapter(client, auth["headers"], book_id, "   ")
-    assert r.status_code == 200, r.text
-    assert r.json()["data"]["chapter"]["title"] == ""
+    assert r.status_code == 400, r.text
 
 
 def test_create_chapter_not_member_404(client, auth, user_factory):

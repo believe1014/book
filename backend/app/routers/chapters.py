@@ -70,6 +70,10 @@ def create_chapter(
     if membership.role not in EDIT_ROLES:
         raise errors.forbidden("僅擁有者或編輯者可新增章節")
 
+    # Q2: 空白標題驗證一致化（對齊 books.py::create_book）。
+    if not body.title.strip():
+        raise errors.bad_request("請輸入章節標題")
+
     # Enforce max two levels (spec FR-31): parent must be a top-level chapter.
     if body.parent_id is not None:
         parent = session.get(Chapter, body.parent_id)
