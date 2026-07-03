@@ -20,6 +20,7 @@ from sqlmodel import SQLModel  # noqa: E402
 from app import models  # noqa: E402,F401  — 確保所有資料表註冊進 metadata
 from app.database import engine, init_db  # noqa: E402
 from app.main import app  # noqa: E402
+from app.services.locks import lock_manager  # noqa: E402
 
 init_db()
 
@@ -33,10 +34,19 @@ def client():
 
 @pytest.fixture(autouse=True)
 def _reset_db(client):
-    """每個測試前重建 schema，達成資料隔離（depend on client 確保 lifespan 已跑）。"""
+    """每個測試前重建 schema 並清空行程級全域鎖狀態，達成完整隔離。
+
+    lock_manager 是行程級單例（記憶體），不隨 DB 重建而清空；每次測試 DB 從空
+    schema 重新自增 id，若不清鎖會有跨測試/跨檔案的 chapter_id 汙染（造成 test_ws
+    等檔案間歇性 KeyError）。故在此全域統一清空，取代各測試檔各自定義的清鎖 fixture。
+    """
     SQLModel.metadata.drop_all(engine)
     SQLModel.metadata.create_all(engine)
+    if hasattr(lock_manager, "_locks"):
+        lock_manager._locks.clear()
     yield
+    if hasattr(lock_manager, "_locks"):
+        lock_manager._locks.clear()
 
 
 def _register(client, email, password, name):
