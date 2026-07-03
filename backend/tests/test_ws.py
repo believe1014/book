@@ -338,8 +338,10 @@ def test_ws_ping_refreshes_own_held_lock(client, auth):
         reply = _recv(ws, timeout=3)
         assert reply == {"type": "pong"}
 
-    expires_after = lock_manager._locks[ch["id"]]["expires_at"]
-    assert expires_after > adjusted_before
+        # 必須在 with 區塊內讀取：離開區塊會斷線並觸發鎖釋放（非同步），與此讀取
+        # 形成 race → 間歇性 KeyError（line 341）。斷線前讀取才穩定。
+        expires_after = lock_manager._locks[ch["id"]]["expires_at"]
+        assert expires_after > adjusted_before
 
 
 # ---------- 斷線：釋放鎖並廣播 ----------
