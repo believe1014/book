@@ -343,6 +343,9 @@ def accept_invitation(
     inv = session.exec(select(Invitation).where(Invitation.token == body.token)).first()
     if inv is None or inv.status != "pending":
         raise errors.not_found("邀請不存在或已失效")
+    # 安全（S1）：邀請只能由受邀信箱本人接受，避免 token 外流被他人冒名兌換。
+    if inv.email.lower() != user.email.lower():
+        raise errors.forbidden("此邀請並非發給您的帳號")
     existing = get_membership(session, inv.book_id, user.id)
     if existing:
         inv.status = "accepted"

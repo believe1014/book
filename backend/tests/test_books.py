@@ -428,10 +428,9 @@ def test_accept_invitation_invalid_token_404(client, auth):
     assert r.status_code == 404, r.text
 
 
-def test_accept_invitation_by_logged_in_holder_of_token(client, auth, user_factory):
-    """POST /invitations/accept 僅檢查 token 是否為 pending，不驗證目前登入者的
-    email 是否等於邀請信箱（疑似權限漏洞，見報告）。此測試記錄現況行為：
-    任何登入中使用者取得 token 即可用邀請指定的角色加入該書。
+def test_accept_invitation_by_non_invited_user_forbidden(client, auth, user_factory):
+    """安全（S1）：POST /invitations/accept 必須驗證登入者 email == 邀請信箱。
+    email 不符者取得外流 token 也不能兌換（403），且不會被加入成員。
     """
     book_id = _create_book(client, auth)
     r = client.post(
@@ -445,38 +444,61 @@ def test_accept_invitation_by_logged_in_holder_of_token(client, auth, user_facto
     r2 = client.post(
         "/api/invitations/accept", json={"token": token}, headers=redeemer["headers"]
     )
-    assert r2.status_code == 200, r2.text  # 現況：允許非邀請信箱本人兌換 token
-    assert r2.json()["data"]["book_id"] == book_id
+    assert r2.status_code == 403, r2.text  # 修復後：拒絕非受邀信箱兌換
 
+    # 未被加入：非成員存取該書應 404（不洩漏存在）。
     r3 = client.get(f"/api/books/{book_id}", headers=redeemer["headers"])
-    assert r3.status_code == 200, r3.text
-    assert r3.json()["data"]["my_role"] == "viewer"
+    assert r3.status_code == 404, r3.text
 
 
-def test_accept_invitation_already_member_conflicts(client, auth, user_factory):
-    """token 持有者若本來就已是該書成員，接受會回 409 並將邀請標記為 accepted。"""
+def test_accept_invitation_by_invited_email_succeeds(client, auth, user_factory):
+    """受邀信箱本人（大小寫不敏感）可正常接受邀請並成為指定角色成員。"""
     book_id = _create_book(client, auth)
     r = client.post(
         f"/api/books/{book_id}/members",
-        json={"email": "ghost2@test.com", "role": "viewer"},  # 從未註冊的信箱
+        json={"email": "Invited@test.com", "role": "editor"},
         headers=auth["headers"],
     )
     token = r.json()["data"]["invitation"]["token"]
 
-    # 另一個已是該書成員（editor）的使用者嘗試兌換同一 token
-    already_member = _invite_and_get_headers(
-        client, auth, book_id, user_factory, "already-member@test.com", "editor"
-    )
+    invited = user_factory(email="invited@test.com")  # 大小寫不同仍應相符
     r2 = client.post(
-        "/api/invitations/accept", json={"token": token}, headers=already_member["headers"]
+        "/api/invitations/accept", json={"token": token}, headers=invited["headers"]
     )
-    assert r2.status_code == 409, r2.text
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["data"]["book_id"] == book_id
 
-    # 邀請已被消耗（標記 accepted），無法重複使用
-    r3 = client.post(
-        "/api/invitations/accept", json={"token": token}, headers=already_member["headers"]
+    r3 = client.get(f"/api/books/{book_id}", headers=invited["headers"])
+    assert r3.status_code == 200, r3.text
+    assert r3.json()["data"]["my_role"] == "editor"
+
+
+def test_accept_invitation_token_consumed_after_register_autojoin(client, auth, user_factory):
+    """受邀信箱註冊時會自動接受 pending 邀請（FR-21），token 隨即被消耗（標記
+    accepted）；之後再手動兌換同一 token 應回 404（已失效）。
+
+    註：S1 修復後，「已是成員」的 409 分支需 email 相符才可能到達，而註冊自動接受
+    會先把邀請標記為 accepted，故正常流程下無法構造「pending 邀請 + 已是成員」；
+    本測試改驗證合法且可達的 token 消耗行為。
+    """
+    book_id = _create_book(client, auth)
+    r = client.post(
+        f"/api/books/{book_id}/members",
+        json={"email": "joiner@test.com", "role": "viewer"},  # 從未註冊的信箱
+        headers=auth["headers"],
     )
-    assert r3.status_code == 404, r3.text
+    token = r.json()["data"]["invitation"]["token"]
+
+    # 受邀信箱本人註冊 → 自動接受 pending 邀請，token 被消耗
+    joiner = user_factory(email="joiner@test.com")
+    # 已是成員：可存取該書
+    assert client.get(f"/api/books/{book_id}", headers=joiner["headers"]).status_code == 200
+
+    # 手動兌換已消耗的 token → 404（已失效）
+    r2 = client.post(
+        "/api/invitations/accept", json={"token": token}, headers=joiner["headers"]
+    )
+    assert r2.status_code == 404, r2.text
 
 
 # ---------- 權限矩陣總覽：對每個角色驗證可做/不可做的操作 ----------
