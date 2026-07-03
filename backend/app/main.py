@@ -43,6 +43,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# S5：輕量安全回應標頭（不設 CSP 以免破壞現有 SPA）。
+@app.middleware("http")
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "same-origin"
+    return response
+
+
 # Unified error envelope (spec §5.1)
 app.add_exception_handler(APIError, api_error_handler)
 app.add_exception_handler(StarletteHTTPException, http_exception_handler)
