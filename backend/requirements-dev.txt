@@ -1,0 +1,2 @@
+# 開發/測試相依（httpx 已在 requirements.txt 供 TestClient 使用）
+pytest==9.1.1
