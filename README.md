@@ -79,6 +79,31 @@ npm run dev
 
 ---
 
+## 部署安全設定
+
+正式部署前，**務必**設定下列環境變數（皆以 `BOOK_` 為前綴）：
+
+| 環境變數 | 必要性 | 說明 |
+|----------|--------|------|
+| `BOOK_JWT_SECRET` | **必設** | JWT 簽章密鑰，須為強隨機值、長度 **≥ 32** 字元。切勿沿用原始碼內的開發預設值。可用 `python -c "import secrets; print(secrets.token_urlsafe(48))"` 產生。 |
+| `BOOK_ENVIRONMENT` | 建議設 `production` | 標記生產環境，啟用啟動期安全 fail-fast 檢查。 |
+| `BOOK_CORS_ORIGINS` | 選用 | 允許的前端來源清單（逗號分隔），例如 `https://your-domain.com`。 |
+
+> **Fail-fast 保護（S2）**
+> 啟動時 `security_checks.assert_secure_config` 會檢查 JWT 密鑰。若密鑰仍為預設值或
+> 長度不足（< 32），且**偵測到生產環境**——即 `BOOK_ENVIRONMENT=production` **或**
+> 已設定 `DATABASE_URL`（正式部署通常會掛託管 PostgreSQL）——服務會直接
+> **拒絕啟動（RuntimeError）**，避免以不安全設定上線。
+>
+> 因此即使一時忘了設 `BOOK_ENVIRONMENT`，只要接上了正式資料庫，弱密鑰也會被擋下。
+> 純本機 SQLite 開發（未設 `DATABASE_URL` 且非 production）則僅記錄警告、不阻擋。
+
+登入端點內建暴力破解／撞庫限流（S3，5 分鐘滑動視窗）：同一 (IP, Email) 失敗達門檻，
+或單一 IP 對大量帳號的總失敗達較高門檻，皆會回 `429`。限流狀態存於單一行程記憶體，
+多副本部署時各副本各自計數（如需跨副本一致，應改接 Redis 等共享後端）。
+
+---
+
 ## MCP server（讓 AI 助理操作你的書）
 
 後端內建一個 **MCP server**（遠端 streamable HTTP），隨 app 一起部署，端點為：
