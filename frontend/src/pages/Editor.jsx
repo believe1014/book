@@ -92,6 +92,11 @@ export default function Editor() {
   const { presence, lockOwner } = useChapterSocket(selectedId, {
     onContentUpdated: (v) => {
       // Someone else saved a newer version → pull latest if we're behind (FR-52)
+      // 自己存檔的廣播也會回到自己，且常比 HTTP 回應先到（versionRef 尚未更新）→
+      // 誤判落後而 reloadContent，編輯器重建、游標跳掉。有未存/存檔中變更
+      // （pendingDoc 於存檔成功後才清空）一律不重載；真正的版本落差交由
+      // 下次存檔的 base_version 409 衝突路徑處理（reload + 通知）。
+      if (pendingDoc.current != null) return
       if (v > versionRef.current) reloadContent(selectedId)
     },
   })
