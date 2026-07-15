@@ -155,16 +155,26 @@ export function downloadText(filename, text, mime = 'text/markdown;charset=utf-8
 export async function exportPdf(filename, bodyHtml) {
   const { default: html2pdf } = await import('html2pdf.js')
   const holder = document.createElement('div')
-  holder.style.cssText = 'position:fixed;left:-99999px;top:0;width:794px;background:#fff;padding:24px;'
+  // html2canvas derives the capture window from the element's bounding rect, so a
+  // fixed element parked at -99999px rasterizes as an empty canvas (blank PDF).
+  // Keep it at the document origin, hidden behind the page instead.
+  holder.style.cssText = 'position:absolute;left:0;top:0;width:794px;background:#fff;padding:24px;z-index:-1;'
   holder.innerHTML = `<style>${PRINT_CSS}</style>` + bodyHtml
   document.body.appendChild(holder)
   try {
+    // Rasterizing before fonts/images finish loading yields blank or partial pages.
+    await document.fonts.ready
+    await Promise.all(
+      Array.from(holder.querySelectorAll('img')).map(
+        (img) => img.complete || new Promise((res) => { img.onload = img.onerror = res })
+      )
+    )
     await html2pdf()
       .set({
         filename,
         margin: [12, 10, 14, 10],
         image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false, scrollX: 0, scrollY: 0 },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         pagebreak: { mode: ['css', 'legacy'] },
       })
