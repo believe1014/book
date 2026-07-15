@@ -151,37 +151,96 @@ export function downloadText(filename, text, mime = 'text/markdown;charset=utf-8
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-// One-click PDF via html2pdf.js (lazy-loaded; rasterizes via html2canvas).
+// Sample ~24 rows of a page slice; true if every sampled pixel is near-white.
+function isBlankSlice(ctx, w, h) {
+  const step = Math.max(1, Math.floor(h / 24))
+  for (let row = 0; row < h; row += step) {
+    const d = ctx.getImageData(0, row, w, 1).data
+    for (let i = 0; i < d.length; i += 40) {
+      if (d[i] < 250 || d[i + 1] < 250 || d[i + 2] < 250) return false
+    }
+  }
+  return true
+}
+
+// One-click PDF: rasterize each top-level block (book title / chapter section)
+// into its own canvas via html2canvas, slice into A4 pages, and merge into a
+// single jsPDF. Chunking per chapter is load-bearing: rendering the whole book
+// in one canvas exceeds Chrome's 65535px canvas height cap on long books and
+// silently produces an all-blank PDF (jspdf/html2canvas are html2pdf.js's own
+// deps, used directly here).
 export async function exportPdf(filename, bodyHtml) {
-  const { default: html2pdf } = await import('html2pdf.js')
+  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import('html2canvas'), import('jspdf')])
+
+  // Split into per-chapter chunks; non-section blocks (book title) stay with
+  // the following chapter so the title doesn't sit on a page of its own.
+  const src = document.createElement('div')
+  src.innerHTML = bodyHtml
+  const chunks = []
+  let pending = ''
+  for (const el of Array.from(src.children)) {
+    if (el.tagName === 'SECTION') {
+      chunks.push(pending + el.outerHTML)
+      pending = ''
+    } else {
+      pending += el.outerHTML
+    }
+  }
+  if (pending) chunks.push(pending)
+
+  const M = { top: 12, right: 10, bottom: 14, left: 10 } // mm, matches old html2pdf margins
+  const contentWmm = 210 - M.left - M.right
+  const contentHmm = 297 - M.top - M.bottom
+
+  // The rasterized element must be in normal flow: html2canvas collapses
+  // position:fixed/absolute targets to a 0-height capture (root cause of the
+  // original blank exports). Hide it behind the app instead of off-screen.
+  const wrap = document.createElement('div')
+  wrap.style.cssText = 'position:absolute;left:0;top:0;z-index:-1;'
   const holder = document.createElement('div')
-  // html2canvas derives the capture window from the element's bounding rect, so a
-  // fixed element parked at -99999px rasterizes as an empty canvas (blank PDF).
-  // Keep it at the document origin, hidden behind the page instead.
-  holder.style.cssText = 'position:absolute;left:0;top:0;width:794px;background:#fff;padding:24px;z-index:-1;'
-  holder.innerHTML = `<style>${PRINT_CSS}</style>` + bodyHtml
-  document.body.appendChild(holder)
+  holder.style.cssText = 'width:794px;background:#fff;padding:24px;'
+  wrap.appendChild(holder)
+  document.body.appendChild(wrap)
+
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+  let firstPage = true
   try {
-    // Rasterizing before fonts/images finish loading yields blank or partial pages.
     await document.fonts.ready
-    await Promise.all(
-      Array.from(holder.querySelectorAll('img')).map(
-        (img) => img.complete || new Promise((res) => { img.onload = img.onerror = res })
+    for (const chunk of chunks) {
+      holder.innerHTML = `<style>${PRINT_CSS}</style>` + chunk
+      // Rasterizing before images finish loading yields blank gaps.
+      await Promise.all(
+        Array.from(holder.querySelectorAll('img')).map(
+          (img) => img.complete || new Promise((res) => { img.onload = img.onerror = res })
+        )
       )
-    )
-    await html2pdf()
-      .set({
-        filename,
-        margin: [12, 10, 14, 10],
-        image: { type: 'jpeg', quality: 0.95 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false, scrollX: 0, scrollY: 0 },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        pagebreak: { mode: ['css', 'legacy'] },
-      })
-      .from(holder)
-      .save()
+      // ponytail: cap canvas height by lowering resolution — a >15k-px chapter
+      // exports slightly softer instead of silently blank.
+      const scale = Math.min(2, 30000 / Math.max(holder.offsetHeight, 1))
+      const canvas = await html2canvas(holder, { scale, useCORS: true, backgroundColor: '#ffffff', logging: false })
+      const pxPerMm = canvas.width / contentWmm
+      const pageHpx = Math.floor(contentHmm * pxPerMm)
+      for (let y = 0; y < canvas.height; y += pageHpx) {
+        const sliceH = Math.min(pageHpx, canvas.height - y)
+        const page = document.createElement('canvas')
+        page.width = canvas.width
+        page.height = sliceH
+        const ctx = page.getContext('2d')
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, page.width, page.height)
+        ctx.drawImage(canvas, 0, y, canvas.width, sliceH, 0, 0, canvas.width, sliceH)
+        // A chapter whose height barely exceeds a page multiple leaves a white
+        // sliver (bottom padding) as its own page — skip it. Pixel-checked, not
+        // height-checked: a tail slice holding a cut half-line must keep its page.
+        if (y > 0 && sliceH < pageHpx && isBlankSlice(ctx, page.width, sliceH)) continue
+        if (!firstPage) pdf.addPage()
+        firstPage = false
+        pdf.addImage(page.toDataURL('image/jpeg', 0.95), 'JPEG', M.left, M.top, contentWmm, sliceH / pxPerMm)
+      }
+    }
+    pdf.save(filename)
   } finally {
-    holder.remove()
+    wrap.remove()
   }
 }
 
