@@ -43,6 +43,8 @@ export default function Editor() {
   const [showVersions, setShowVersions] = useState(false)
   const [showExport, setShowExport] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [quoteBtn, setQuoteBtn] = useState(null)   // {x, y, text} floating "add comment" button, or null
+  const [pendingQuote, setPendingQuote] = useState(null) // excerpt handed to the comment composer
 
   // Draggable column widths (FR: left/right resizable, each ≤ ½ total width).
   const [leftW, setLeftW] = useState(() => Number(localStorage.getItem('editor_leftW')) || 280)
@@ -146,6 +148,41 @@ export default function Editor() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId])
+
+  // Show a floating "💬 加入評論" button when a commenter selects chapter text.
+  useEffect(() => {
+    if (!canComment) return
+    function onMouseUp(e) {
+      if (e.target.closest?.('.quote-add-btn')) return // let the button's own click fire
+      const sel = window.getSelection()
+      if (!sel || sel.isCollapsed || !sel.toString().trim()) { setQuoteBtn(null); return }
+      const rte = document.querySelector('.rte-content')
+      if (!rte || !rte.contains(sel.anchorNode) || !rte.contains(sel.focusNode)) { setQuoteBtn(null); return }
+      const rect = sel.getRangeAt(0).getBoundingClientRect()
+      if (!rect.width && !rect.height) { setQuoteBtn(null); return }
+      setQuoteBtn({ x: rect.left + rect.width / 2, y: rect.top, text: sel.toString() })
+    }
+    function onMouseDown(e) {
+      if (e.target.closest?.('.quote-add-btn')) return
+      setQuoteBtn(null) // any fresh click hides it; a new selection re-adds on mouseup
+    }
+    document.addEventListener('mouseup', onMouseUp)
+    document.addEventListener('mousedown', onMouseDown)
+    return () => {
+      document.removeEventListener('mouseup', onMouseUp)
+      document.removeEventListener('mousedown', onMouseDown)
+    }
+  }, [canComment])
+
+  function addQuoteComment() {
+    const text = (quoteBtn?.text || '').replace(/\s+/g, ' ').trim().slice(0, 300)
+    setQuoteBtn(null)
+    if (!text) return
+    setPendingQuote(text)
+    setRightCollapsed(false)
+    setRightTab('comments')
+    window.getSelection()?.removeAllRanges()
+  }
 
   // Keep the comment badge fresh when switching chapters (lightweight count).
   useEffect(() => {
@@ -341,13 +378,25 @@ export default function Editor() {
               <MediaPanel bookId={bookId} canEdit={canEditRole} onInsert={insertMedia} />
             ) : (
               <CommentsPanel bookId={bookId} chapterId={selectedId} canComment={canComment}
-                currentUserId={user?.id} isOwner={isOwner} onCountChange={setUnresolvedCount} />
+                currentUserId={user?.id} isOwner={isOwner} onCountChange={setUnresolvedCount}
+                pendingQuote={pendingQuote} onQuoteConsumed={() => setPendingQuote(null)} />
             )}
           </aside>
         ) : (
           <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start', margin: 8 }} onClick={() => setRightCollapsed(false)} title="展開面板">📊</button>
         )}
       </div>
+
+      {quoteBtn && (
+        <button className="btn btn-primary btn-sm quote-add-btn"
+          style={{
+            position: 'fixed', left: quoteBtn.x, top: quoteBtn.y - 8,
+            transform: 'translate(-50%, -100%)', zIndex: 50, whiteSpace: 'nowrap',
+            boxShadow: 'var(--shadow-md)',
+          }}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={addQuoteComment}>💬 加入評論</button>
+      )}
 
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
       {showExport && (

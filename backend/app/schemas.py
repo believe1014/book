@@ -119,11 +119,18 @@ class CommentCreateIn(BaseModel):
     body: str = Field(default="", max_length=5000)
     parent_id: Optional[int] = None
     image_url: Optional[str] = None
+    quote: Optional[str] = None  # anchoring excerpt; stored, truncated to 500
 
     @field_validator("body")
     @classmethod
     def non_empty(cls, v):
         return (v or "").strip()
+
+    @field_validator("quote")
+    @classmethod
+    def clean_quote(cls, v):
+        v = (v or "").strip()
+        return v[:500] or None
 
 
 class CommentUpdateIn(BaseModel):

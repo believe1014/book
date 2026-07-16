@@ -111,6 +111,7 @@ class Comment(SQLModel, table=True):
     parent_id: Optional[int] = Field(default=None, foreign_key="comments.id", index=True)
     body: str = Field(default="")
     image_url: Optional[str] = None
+    quote: Optional[str] = None  # anchored excerpt of chapter text (nullable)
     resolved: bool = Field(default=False)  # only meaningful on top-level threads
     resolved_by: Optional[int] = Field(default=None, foreign_key="users.id")
     created_at: str = Field(default_factory=utcnow)

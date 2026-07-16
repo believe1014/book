@@ -80,6 +80,23 @@ def init_db() -> None:
     from . import models  # noqa: F401
 
     SQLModel.metadata.create_all(engine)
+    _ensure_comment_quote_column()
+
+
+def _ensure_comment_quote_column() -> None:
+    """Add comments.quote on pre-existing DBs (create_all never alters tables).
+
+    ponytail: single hand-rolled ALTER, no migration tool — add Alembic only if
+    schema churn grows beyond a handful of columns. Works on SQLite + Postgres.
+    """
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    cols = {c["name"] for c in insp.get_columns("comments")}
+    if "quote" in cols:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE comments ADD COLUMN quote TEXT"))
 
 
 def get_session():

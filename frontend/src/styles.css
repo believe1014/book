@@ -297,6 +297,29 @@ body.col-resizing { cursor: col-resize; user-select: none; }
 .mermaid-preview svg { max-width: 100%; height: auto; }
 .mermaid-error { color: var(--danger); font-size: 13px; }
 
+/* ---------- Anchored comment quotes ---------- */
+.comment-quote {
+  border-left: 3px solid var(--brand-primary);
+  background: var(--bg-subtle); color: var(--text-muted);
+  margin: 0 0 6px; padding: 6px 10px; border-radius: 0 6px 6px 0;
+  font-size: 13px; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word;
+  max-height: 5.5em; overflow: hidden;
+}
+.comment-quote:not(.composer-quote) { cursor: pointer; }
+.comment-quote:not(.composer-quote):hover { background: #e8e5df; }
+.composer-quote { position: relative; padding-right: 28px; }
+.quote-remove {
+  position: absolute; top: 2px; right: 2px; min-width: 20px;
+  padding: 0 6px; line-height: 1.4; color: var(--text-muted);
+}
+/* brief highlight when a quote is clicked to jump back to its paragraph */
+.quote-flash { animation: quote-flash 1.6s ease; border-radius: 4px; }
+@keyframes quote-flash {
+  0% { background: rgba(45, 106, 79, .28); }
+  100% { background: transparent; }
+}
+
 /* tree menu button shows on hover */
 .tree-menu-btn { opacity: 0; padding: 0 4px; background: none; border: none; color: var(--text-muted); font-size: 16px; }
 .tree-item:hover .tree-menu-btn { opacity: 1; }

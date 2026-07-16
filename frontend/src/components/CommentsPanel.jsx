@@ -1,10 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import { toast } from '../store/toast'
+import { findQuoteBlockIndex } from './quoteMatch'
 
 // Right-column review comments for the selected chapter (chapter-level threads,
 // single-level replies). Reviewers/editors/owners can comment; viewers read only.
-export default function CommentsPanel({ bookId, chapterId, canComment, currentUserId, isOwner, onCountChange }) {
+
+// Find the chapter block that contains `quote`, scroll it into view, briefly flash it.
+function scrollToQuote(quote) {
+  const root = document.querySelector('.rte-content')
+  if (!root || !quote) return
+  const blocks = Array.from(root.querySelectorAll('p, h1, h2, h3, blockquote, li'))
+  const idx = findQuoteBlockIndex(blocks.map((b) => b.textContent), quote)
+  if (idx < 0) return // quote no longer locatable (content changed) → no-op
+  const el = blocks[idx]
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  el.classList.add('quote-flash')
+  setTimeout(() => el.classList.remove('quote-flash'), 1600)
+}
+
+export default function CommentsPanel({ bookId, chapterId, canComment, currentUserId, isOwner, onCountChange, pendingQuote, onQuoteConsumed }) {
   const [threads, setThreads] = useState(null)
   const [showResolved, setShowResolved] = useState(false)
 
@@ -31,7 +46,8 @@ export default function CommentsPanel({ bookId, chapterId, canComment, currentUs
           style={{ color: 'var(--brand-primary)', textDecoration: 'none' }}>❓ 審稿說明</a>
       </div>
       {canComment && (
-        <Composer bookId={bookId} chapterId={chapterId} onPosted={load} placeholder="新增評論…可附一張圖片＋說明" />
+        <Composer bookId={bookId} chapterId={chapterId} onPosted={load} placeholder="新增評論…可附一張圖片＋說明"
+          incomingQuote={pendingQuote} onQuoteConsumed={onQuoteConsumed} />
       )}
 
       {(threads?.length ?? 0) > 0 && resolvedCount > 0 && (
@@ -132,6 +148,10 @@ function CommentItem({ c, currentUserId, isOwner, onChanged }) {
         </div>
       ) : (
         <>
+          {c.quote && (
+            <blockquote className="comment-quote" title="點擊跳至正文對應段落"
+              onClick={() => scrollToQuote(c.quote)}>{c.quote}</blockquote>
+          )}
           {c.body && <div className="text-sm" style={{ marginTop: 4, whiteSpace: 'pre-wrap' }}>{c.body}</div>}
           {c.image_url && (
             <a href={c.image_url} target="_blank" rel="noopener">
@@ -150,11 +170,17 @@ function CommentItem({ c, currentUserId, isOwner, onChanged }) {
   )
 }
 
-function Composer({ bookId, chapterId, parentId, onPosted, placeholder, compact }) {
+function Composer({ bookId, chapterId, parentId, onPosted, placeholder, compact, incomingQuote, onQuoteConsumed }) {
   const [body, setBody] = useState('')
   const [imageUrl, setImageUrl] = useState('')
+  const [quote, setQuote] = useState('')
   const [busy, setBusy] = useState(false)
   const fileRef = useRef(null)
+
+  // Pull in an excerpt selected in the editor (top-level composer only).
+  useEffect(() => {
+    if (incomingQuote) { setQuote(incomingQuote); onQuoteConsumed?.() }
+  }, [incomingQuote]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function pickImage(file) {
     if (!file) return
@@ -175,8 +201,11 @@ function Composer({ bookId, chapterId, parentId, onPosted, placeholder, compact 
     if (!body.trim() && !imageUrl) return
     setBusy(true)
     try {
-      await api.createComment(chapterId, { body: body.trim(), image_url: imageUrl || undefined, parent_id: parentId })
-      setBody(''); setImageUrl('')
+      await api.createComment(chapterId, {
+        body: body.trim(), image_url: imageUrl || undefined, parent_id: parentId,
+        quote: quote || undefined,
+      })
+      setBody(''); setImageUrl(''); setQuote('')
       onPosted?.()
     } catch (e) {
       toast.error(e.message || '送出失敗')
@@ -187,6 +216,12 @@ function Composer({ bookId, chapterId, parentId, onPosted, placeholder, compact 
 
   return (
     <div style={{ marginBottom: compact ? 0 : 4 }}>
+      {quote && (
+        <blockquote className="comment-quote composer-quote">
+          {quote}
+          <button className="btn btn-ghost btn-sm quote-remove" title="移除引文" onClick={() => setQuote('')}>×</button>
+        </blockquote>
+      )}
       <textarea className="input" rows={compact ? 2 : 3} value={body} placeholder={placeholder}
         onChange={(e) => setBody(e.target.value)} />
       {imageUrl && (

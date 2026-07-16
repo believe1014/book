@@ -28,6 +28,7 @@ def _comment_dict(c: Comment, author_name: str) -> dict:
         "parent_id": c.parent_id,
         "body": c.body,
         "image_url": c.image_url,
+        "quote": c.quote,
         "resolved": c.resolved,
         "resolved_by": c.resolved_by,
         "created_at": c.created_at,
@@ -102,6 +103,7 @@ def create_comment(
     c = Comment(
         chapter_id=chapter_id, author_id=user.id, parent_id=parent_id,
         body=body.body, image_url=body.image_url,
+        quote=body.quote if parent_id is None else None,  # replies carry no quote
     )
     session.add(c)
     session.commit()
