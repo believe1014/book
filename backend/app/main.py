@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -17,7 +17,9 @@ from .errors import (
     validation_exception_handler,
 )
 from .mcp_server import mcp_server
-from .routers import auth, books, chapters, comments, content, media, tokens, ws
+from .oauth import auth_routes
+from .routers import auth, books, chapters, comments, content, media, oauth_consent, tokens, ws
+from .services.rate_limit import oauth_rate_limiter
 from .security_checks import assert_secure_config
 
 
@@ -57,6 +59,21 @@ async def security_headers(request, call_next):
     return response
 
 
+# OAuth 端點限流(spec §8,同 govmeet):POST /register 每 IP 10 次/小時、POST /token 30 次/分。
+# 註:與登入限流相同,反向代理後 client.host 是代理 IP(見 routers/auth.py login 的註解)。
+OAUTH_LIMITS = {"/register": (10, 3600), "/token": (30, 60)}
+
+
+@app.middleware("http")
+async def oauth_rate_limit(request, call_next):
+    limit = OAUTH_LIMITS.get(request.url.path) if request.method == "POST" else None
+    if limit:
+        ip = request.client.host if request.client else "unknown"
+        if not oauth_rate_limiter.allow((request.url.path, ip), *limit):
+            return JSONResponse(status_code=429, content={"error": "too_many_requests"})
+    return await call_next(request)
+
+
 # Unified error envelope (spec §5.1)
 app.add_exception_handler(APIError, api_error_handler)
 app.add_exception_handler(StarletteHTTPException, http_exception_handler)
@@ -79,7 +96,12 @@ app.include_router(content.router)
 app.include_router(media.router)
 app.include_router(comments.router)
 app.include_router(tokens.router)
+app.include_router(oauth_consent.router)
 app.include_router(ws.router)
+
+# MCP OAuth 授權伺服器 + PRM(根層 /.well-known/*、/authorize、/token、/register、/revoke)。
+# 必須在 SPA catch-all 之前註冊,否則 GET /authorize 會被 SPA 吃掉。
+app.router.routes.extend(auth_routes())
 
 
 @app.get("/api/health")

@@ -12,9 +12,10 @@ from typing import Optional
 from urllib.parse import urlparse
 
 from jose import JWTError, jwt
-from pydantic import AnyUrl
+from pydantic import AnyHttpUrl, AnyUrl
 from sqlalchemy import delete, update
 from sqlmodel import Session, select
+from starlette.routing import Route
 
 from mcp.server.auth.provider import (
     AccessToken,
@@ -24,6 +25,8 @@ from mcp.server.auth.provider import (
     RegistrationError,
     TokenError,
 )
+from mcp.server.auth.routes import create_auth_routes, create_protected_resource_routes
+from mcp.server.auth.settings import ClientRegistrationOptions, RevocationOptions
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
 from .config import settings
@@ -219,3 +222,20 @@ class KkbookOAuthProvider:
 
 
 provider = KkbookOAuthProvider()
+
+
+def auth_routes() -> list[Route]:
+    """掛在主 app 根層(SPA catch-all 之前)的 AS 路由 + PRM(RFC 8414 / 9728 discovery)。"""
+    base = settings.public_base_url.rstrip("/")
+    prm = create_protected_resource_routes(AnyHttpUrl(f"{base}/mcp/"), [AnyHttpUrl(base)])
+    return [
+        *create_auth_routes(
+            provider,
+            issuer_url=AnyHttpUrl(base),
+            client_registration_options=ClientRegistrationOptions(enabled=True),
+            revocation_options=RevocationOptions(enabled=True),
+        ),
+        *prm,  # /.well-known/oauth-protected-resource/mcp/
+        # 只查根層的客戶端:同一份 metadata 再掛一條裸路徑
+        Route("/.well-known/oauth-protected-resource", endpoint=prm[0].endpoint, methods=["GET", "OPTIONS"]),
+    ]

@@ -14,9 +14,10 @@ from app.security_checks import MIN_SECRET_LEN, assert_secure_config
 STRONG_SECRET = "x" * MIN_SECRET_LEN  # 剛好 32 字元的強度示意值
 
 
-def _settings(environment, jwt_secret, database_url=None):
+def _settings(environment, jwt_secret, database_url=None, public_base_url="https://book.believe.center"):
     return types.SimpleNamespace(
-        environment=environment, jwt_secret=jwt_secret, database_url=database_url
+        environment=environment, jwt_secret=jwt_secret, database_url=database_url,
+        public_base_url=public_base_url,
     )
 
 
@@ -83,3 +84,15 @@ def test_conftest_like_env_does_not_raise():
     assert_secure_config(
         _settings("development", "test-secret-for-pytest-only", database_url=None)
     )
+
+
+def test_production_requires_https_public_base_url():
+    with pytest.raises(RuntimeError, match="BOOK_PUBLIC_BASE_URL"):
+        assert_secure_config(_settings("production", STRONG_SECRET, public_base_url="http://localhost:8000"))
+    with pytest.raises(RuntimeError, match="BOOK_PUBLIC_BASE_URL"):
+        assert_secure_config(_settings("development", STRONG_SECRET, database_url="postgresql://x",
+                                       public_base_url="http://localhost:8000"))
+
+
+def test_development_allows_localhost_public_base_url():
+    assert_secure_config(_settings("development", STRONG_SECRET, public_base_url="http://localhost:8000"))

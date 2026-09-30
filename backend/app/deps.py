@@ -95,9 +95,9 @@ def get_current_user_jwt(
     authorization: Optional[str] = Header(default=None),
     session: Session = Depends(get_session),
 ) -> User:
-    """Web-login (JWT) only — a PAT may not mint or revoke PATs."""
-    if _bearer(authorization).startswith(PAT_PREFIX):
-        raise errors.forbidden("此操作需以網頁登入的 token 進行，不接受個人存取 token")
+    """Web-login (JWT) only — a PAT / OAuth token may not mint PATs or approve OAuth grants."""
+    if _bearer(authorization).startswith(NON_JWT_PREFIXES):
+        raise errors.forbidden("此操作需以網頁登入的 token 進行，不接受個人存取 token 或 OAuth token")
     return get_current_user(authorization, session)
 
 

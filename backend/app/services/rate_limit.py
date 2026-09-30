@@ -134,3 +134,38 @@ class LoginRateLimiter:
 
 # 行程級單例。
 login_rate_limiter = LoginRateLimiter()
+
+
+class SlidingWindowLimiter:
+    """通用 per-key 滑動視窗計數(OAuth /register、/token 用;spec §8)。
+
+    ponytail: 單程序記憶體,多副本時改 DB/Redis;key 數超過 MAX_TRACKED_KEYS 時
+    先清掉視窗外的 key,仍超過就整個清空(寧可短暫放寬,不讓記憶體無界成長)。
+    """
+
+    def __init__(self):
+        self._hits: dict[tuple, list[float]] = {}
+        self._lock = threading.Lock()
+
+    def allow(self, key: tuple, limit: int, window: float) -> bool:
+        with self._lock:
+            now = time.monotonic()
+            hits = [t for t in self._hits.get(key, []) if t > now - window]
+            if len(hits) >= limit:
+                self._hits[key] = hits
+                return False
+            if key not in self._hits and len(self._hits) >= MAX_TRACKED_KEYS:
+                # 3600 = 目前最長的視窗(/register 每小時)
+                self._hits = {k: v for k, v in self._hits.items() if v and v[-1] > now - 3600}
+                if len(self._hits) >= MAX_TRACKED_KEYS:
+                    self._hits.clear()
+            hits.append(now)
+            self._hits[key] = hits
+            return True
+
+    def clear(self) -> None:
+        with self._lock:
+            self._hits.clear()
+
+
+oauth_rate_limiter = SlidingWindowLimiter()

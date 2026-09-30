@@ -50,3 +50,11 @@ def assert_secure_config(settings) -> None:
             "生產部署請設定強隨機的 BOOK_JWT_SECRET。",
             MIN_SECRET_LEN,
         )
+    # MCP OAuth issuer 固定由設定給(spec §10):正式環境必須是 https。
+    if (_is_production(settings) or _has_database_url(settings)) and not str(
+        getattr(settings, "public_base_url", "")
+    ).startswith("https://"):
+        raise RuntimeError(
+            "BOOK_PUBLIC_BASE_URL 未設定或不是 https(例如 https://book.believe.center);"
+            "MCP OAuth metadata 需要正確的對外網址。"
+        )
