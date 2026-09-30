@@ -25,6 +25,7 @@ from app.oauth import decode_req, issue_code, provider
 from app.services.rate_limit import SlidingWindowLimiter
 
 REDIRECT = "http://localhost:33418/callback"
+MCP_HEADERS = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
 
 
 def run(coro):
@@ -369,3 +370,46 @@ def test_spa_get_routes_still_served(client):
     for path in ("/register", "/login", "/oauth/consent"):
         r = client.get(path)
         assert r.status_code == 200 and "text/html" in r.headers["content-type"], path
+
+
+# ---------- T4:/mcp 認證 ----------
+def _mcp(client, headers=None):
+    return client.post("/mcp/", headers={**MCP_HEADERS, **(headers or {})}, json={
+        "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "list_books", "arguments": {}},
+    })
+
+
+def test_mcp_without_token_is_401_with_resource_metadata(client):
+    for h in (None, {"Authorization": "Bearer nope"}, {"Authorization": "Bearer kko_nope"}):
+        r = _mcp(client, h)
+        assert r.status_code == 401
+        www = r.headers["www-authenticate"]
+        assert www.startswith("Bearer ") and 'resource_metadata="' in www
+        assert "/.well-known/oauth-protected-resource/mcp/" in www
+
+
+def test_mcp_accepts_jwt_pat_and_oauth(client, auth):
+    client.post("/api/books", headers=auth["headers"], json={"title": "OAuth 書"})
+    pat = client.post("/api/tokens", headers=auth["headers"], json={"name": "mcp"}).json()["data"]["token"]
+    _, tok = _http_tokens(client, auth)
+    for bearer in (auth["token"], pat, tok["access_token"]):
+        r = _mcp(client, {"Authorization": f"Bearer {bearer}"})
+        assert r.status_code == 200, (bearer[:4], r.text)
+        res = r.json()["result"]
+        assert res.get("isError") is not True and "OAuth 書" in res["content"][0]["text"]
+
+
+def test_mcp_rejects_refresh_token_as_bearer(client, auth):
+    _, tok = _http_tokens(client, auth)
+    assert _mcp(client, {"Authorization": f"Bearer {tok['refresh_token']}"}).status_code == 401
+
+
+def test_revoke_endpoint_then_mcp_401(client, auth):
+    cid, tok = _http_tokens(client, auth)
+    # SDK 1.27.2 的 RevocationRequest 把 client_secret 設為必填欄位(可空字串),public client 也要帶
+    r = client.post("/revoke", data={"token": tok["access_token"], "client_id": cid, "client_secret": ""})
+    assert r.status_code == 200, r.text
+    assert _mcp(client, {"Authorization": f"Bearer {tok['access_token']}"}).status_code == 401
+    r = client.post("/token", data={"grant_type": "refresh_token", "client_id": cid, "refresh_token": tok["refresh_token"]})
+    assert r.status_code == 400

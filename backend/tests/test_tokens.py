@@ -29,6 +29,12 @@ def _mcp_list_books(client, tok):
     return r.json()["result"]
 
 
+def _mcp_status(client, tok):
+    return client.post("/mcp/", headers={**MCP_HEADERS, **_bearer(tok)}, json={
+        "jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {},
+    }).status_code
+
+
 def test_create_list_revoke_and_db_stores_hash_only(client, auth):
     d = _create(client, auth)
     tok = d["token"]
@@ -50,7 +56,7 @@ def test_create_list_revoke_and_db_stores_hash_only(client, auth):
     r = client.delete(f"/api/tokens/{d['id']}", headers=auth["headers"])
     assert r.status_code == 200 and r.json()["data"]["revoked_at"]
     assert client.get("/api/auth/me", headers=_bearer(tok)).status_code == 401
-    assert _mcp_list_books(client, tok)["isError"] is True
+    assert _mcp_status(client, tok) == 401
 
 
 def test_mcp_accepts_pat(client, auth):
@@ -69,7 +75,7 @@ def test_expired_pat_rejected(client, auth):
         s.add(pat)
         s.commit()
     assert client.get("/api/auth/me", headers=_bearer(d["token"])).status_code == 401
-    assert _mcp_list_books(client, d["token"])["isError"] is True
+    assert _mcp_status(client, d["token"]) == 401
 
 
 def test_pat_cannot_manage_pats(client, auth):

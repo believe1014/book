@@ -13,7 +13,10 @@ from typing import Annotated, Optional
 from pydantic import Field
 from sqlmodel import Session, select
 
+from mcp.server.auth.provider import AccessToken
+from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import Context, FastMCP
+from starlette.concurrency import run_in_threadpool
 from mcp.server.transport_security import TransportSecuritySettings
 
 try:  # clean error messages to the client when available
@@ -42,6 +45,24 @@ else:
     # Safe because every tool requires a Bearer JWT.
     _transport_security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
 
+class KkbookTokenVerifier:
+    """SDK TokenVerifier:JWT / PAT / OAuth access 都走 deps.user_from_token。
+
+    無效回 None → SDK RequireAuthMiddleware 回 401 + WWW-Authenticate(觸發客戶端 OAuth)。
+    """
+
+    async def verify_token(self, token: str) -> Optional[AccessToken]:
+        def _user_id() -> Optional[int]:
+            with Session(engine) as session:
+                user = user_from_token(session, token.strip())
+                return user.id if user else None
+
+        uid = await run_in_threadpool(_user_id)
+        return AccessToken(token=token, client_id=f"user:{uid}", scopes=[], subject=str(uid)) if uid else None
+
+
+_base_url = settings.public_base_url.rstrip("/")
+
 mcp_server = FastMCP(
     "協作撰書系統",
     instructions=(
@@ -53,6 +74,8 @@ mcp_server = FastMCP(
     json_response=True,
     streamable_http_path="/",
     transport_security=_transport_security,
+    auth=AuthSettings(issuer_url=_base_url, resource_server_url=f"{_base_url}/mcp/"),
+    token_verifier=KkbookTokenVerifier(),
 )
 
 CHAPTER_STATUSES = {"not_started", "writing", "reviewing", "done"}
