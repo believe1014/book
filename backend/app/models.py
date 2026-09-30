@@ -147,3 +147,43 @@ class PersonalAccessToken(SQLModel, table=True):
     last_used_at: Optional[str] = None
     expires_at: Optional[str] = None
     revoked_at: Optional[str] = None
+
+
+class OAuthClientRow(SQLModel, table=True):
+    """MCP OAuth DCR 註冊的客戶端;client_info = SDK OAuthClientInformationFull 的 JSON。"""
+    __tablename__ = "oauth_clients"
+
+    client_id: str = Field(primary_key=True)
+    client_info: str
+    created_at: str = Field(default_factory=utcnow)
+
+
+class OAuthCodeRow(SQLModel, table=True):
+    """授權碼:只存 sha256,10 分鐘、單次使用(換 token 時刪除)。"""
+    __tablename__ = "oauth_codes"
+
+    code_hash: str = Field(primary_key=True)
+    client_id: str = Field(foreign_key="oauth_clients.client_id")
+    user_id: int = Field(foreign_key="users.id")
+    redirect_uri: str
+    redirect_uri_provided_explicitly: bool = True
+    code_challenge: str
+    scopes: str = ""  # 空白分隔
+    expires_at: str
+    created_at: str = Field(default_factory=utcnow)
+
+
+class OAuthTokenRow(SQLModel, table=True):
+    """OAuth access(kko_)+ refresh(kkr_)一組一列,只存 sha256;refresh 時原地輪替。"""
+    __tablename__ = "oauth_tokens"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    token_hash: str = Field(unique=True, index=True)
+    refresh_hash: str = Field(unique=True, index=True)
+    client_id: str = Field(foreign_key="oauth_clients.client_id")
+    user_id: int = Field(foreign_key="users.id", index=True)
+    expires_at: str
+    refresh_expires_at: str
+    revoked_at: Optional[str] = None
+    created_at: str = Field(default_factory=utcnow)
+    last_used_at: Optional[str] = None
