@@ -1,7 +1,7 @@
 # kkbook MCP OAuth 設計(比照 govmeet)
 
 - 日期:2026-09-30
-- 狀態:設計草案,待使用者拍板「需要使用者決定的事項」後進 writing-plans
+- 狀態:設計已核准(2026-09-30);§15 四項已由使用者決定(全採建議),實作計畫見 `docs/superpowers/plans/2026-09-30-mcp-oauth.md`
 - 範圍:只含設計;不改程式、不部署
 
 ## 1. 目標與不做的事
@@ -119,11 +119,11 @@ oauth_tokens  : id PK | token_hash UNIQUE | refresh_hash UNIQUE | client_id FK |
 3. 同意 → `POST /api/oauth/consent` → 前端整頁跳 `redirect_url` → Claude Code 收到 code → `/token` 換 token → 完成。
 4. 錯誤態:`req` 過期(>10 分鐘)→ 顯示「授權請求已過期,請回 Claude Code 重新按授權」,不轉導。
 
-「已登入則直接同意」解讀為**已登入時只需按一次同意**,不自動核准;是否要免點擊自動核准列入使用者決定事項(§14-2)。
+「已登入則直接同意」解讀為**已登入時只需按一次同意**,不自動核准(使用者已決定,§15-2)。
 
 ## 8. 效期與限流
 
-| 項目 | govmeet | kkbook 建議 |
+| 項目 | govmeet | kkbook(已決定) |
 |---|---|---|
 | authorization code | 10 分鐘、單次 | 同 |
 | consent `req` | (無,參數放 hidden form) | 10 分鐘(JWT exp) |
@@ -132,7 +132,7 @@ oauth_tokens  : id PK | token_hash UNIQUE | refresh_hash UNIQUE | client_id FK |
 | DCR 限流 | 10 次/小時 | 同,per-IP 記憶體計數 |
 | token 限流 | 30 次/分 | 同 |
 
-access 不採「短效(如 1 小時)」的理由:Claude Code 多個並行 session 共用同一份 OAuth 憑證,輪替式 refresh 在並發時會互相作廢(使用者已踩過 Claude Code 自身同類 bug,見 memory「Claude Code 反覆登入問題」)。access 長 → refresh 很少發生 → 競態機率低。這是有取捨的選擇,列入 §14-1。
+access 不採「短效(如 1 小時)」的理由:Claude Code 多個並行 session 共用同一份 OAuth 憑證,輪替式 refresh 在並發時會互相作廢(使用者已踩過 Claude Code 自身同類 bug,見 memory「Claude Code 反覆登入問題」)。access 長 → refresh 很少發生 → 競態機率低。這是有取捨的選擇,使用者已決定採 30 天 / 90 天(§15-1)。
 
 限流:kkbook 已有 `backend/app/services/rate_limit.py`(`login_rate_limiter`,用於 `routers/auth.py:66-75`)。實作時先看它能否泛用;不能就寫最小的 per-IP 滑動窗(`# ponytail:` 單程序記憶體,多副本時改 DB/Redis)。SDK 的 handler 本身不限流,需在 provider 或以 Starlette middleware 包 `/register`、`/token`。
 
@@ -144,7 +144,7 @@ access 不採「短效(如 1 小時)」的理由:Claude Code 多個並行 sessio
 | PAT | `kkb_...`,預設 365 天 | REST + MCP | 否 |
 | OAuth access | `kko_...`,30 天 | REST + MCP | 否 |
 
-**與 govmeet 不同**:govmeet `/mcp` 只收 OAuth token。kkbook 三者都收,理由:Claude Desktop / codex 若暫時保留 PAT header(§11),`/mcp` 必須繼續收 PAT;而 JWT 收或不收對安全無差(它本來就能打全部 REST)。OAuth token 也能打 REST 是順帶結果(共用 `user_from_token`);若要限縮只給 MCP,在 `get_current_user` 擋 `kko_` 即可,一行。
+**與 govmeet 不同**:govmeet `/mcp` 只收 OAuth token。kkbook 三者都收,理由:Claude Desktop / codex 若暫時保留 PAT header(§11),`/mcp` 必須繼續收 PAT;而 JWT 收或不收對安全無差(它本來就能打全部 REST)。OAuth token 也能打 REST 是順帶結果(共用 `user_from_token`);使用者已決定**不限縮**(§15-4)。日後若要限縮只給 MCP,在 `get_current_user` 擋 `kko_` 即可,一行。
 
 ## 10. 安全
 
@@ -191,7 +191,7 @@ access 不採「短效(如 1 小時)」的理由:Claude Code 多個並行 sessio
 
 - **mcp-remote 支援 OAuth(已查證)**:全域安裝版 0.1.38 的 README 寫明支援 MCP Authorization spec、預設在 `localhost:3334` 收回呼、token 存 `~/.mcp-auth`;帶 `--header` 時則直接用 header。所以 Desktop / codex 只要**拿掉 `--header` 參數**即可改走 OAuth。
 - **codex 原生支援 HTTP + OAuth(已查證 CLI)**:codex-cli 0.144.1 有 `codex mcp add --url` 與 `codex mcp login <name>`。但 dotfiles-ai 的 http override 會把 `type: http` 一起寫進 `config.toml`,codex 是否接受多出的 `type` 鍵**未確認**;走 mcp-remote 無此問題。
-- **建議**:第一階段 Desktop / codex **維持 PAT header 不動**(PAT 仍被接受,零風險),等 claude-cli 驗收通過再決定是否切(§14-3)。
+- **已決定**:第一階段 Desktop / codex **維持 PAT header 不動**(PAT 仍被接受,零風險),等 claude-cli 驗收通過再另議是否切(§15-3)。
 - `secrets.env` 的 `AUTH_TOKEN` 在 Desktop/codex 仍使用,**不可刪**。
 
 ## 12. 測試策略
@@ -227,16 +227,12 @@ pytest + 既有 `TestClient`(`backend/tests/conftest.py`),新增 `backend/tests/
 5. 既有 PAT(Desktop/codex 用的)仍可呼叫 `list_books`。
 6. `pytest` 全綠,含 `test_oauth.py`。
 
-## 15. 需要使用者決定的事項
+## 15. 使用者已決定事項(2026-09-30,四項全採建議)
 
-1. **access token 效期**:照 govmeet 30 天 vs. 標準短效 1 小時。
-   - 建議:**30 天**(refresh 90 天)。短效較安全,但 Claude Code 多 session 並發 refresh 會互相作廢造成反覆要求授權;kkbook 是個人/小團隊工具,洩漏面與 PAT(365 天)相比已更小。
-2. **已登入時是否免點擊自動核准**:
-   - 建議:**不自動,保留一次點擊「同意」**(同 govmeet)。DCR 是公開的,自動核准等於任何人註冊一個 client 再騙使用者點連結就能拿 token;一次點擊成本極低。
-3. **Claude Desktop / codex 是否也改 OAuth**:
-   - 建議:**第一階段不改,維持 PAT header**;claude-cli 驗收通過後,若想全面免 token,Desktop/codex 只需拿掉 mcp-remote 的 `--header`(mcp-remote 0.1.38 支援 OAuth)。代價是 mcp-remote 首次啟動要開瀏覽器且回呼逾時預設 30 秒。
-4. **OAuth token 是否限縮只能打 `/mcp`**(govmeet 是只給 MCP):
-   - 建議:**不限縮**(與 PAT 一致,少一條規則);若在意,一行即可加。
+1. **access token 效期**:**access 30 天、refresh 90 天**(同 govmeet),env `BOOK_OAUTH_ACCESS_TTL_DAYS` 可調。理由:短效 access 在 Claude Code 多 session 並發 refresh 時會互相作廢、反覆要求授權;kkbook 是個人/小團隊工具,洩漏面仍小於 PAT(365 天)。
+2. **已登入時不自動核准**:保留一次點擊「同意」(同 govmeet)。理由:DCR 是公開的,自動核准等於任何人註冊一個 client 再騙使用者點連結就能拿 token。
+3. **Claude Desktop / codex 第一階段不改**:維持 PAT header;claude-cli 驗收通過後再另議(屆時 Desktop/codex 只需拿掉 mcp-remote 的 `--header`,mcp-remote 0.1.38 支援 OAuth;代價是首次啟動要開瀏覽器、回呼逾時預設 30 秒)。
+4. **OAuth token 不限縮**:與 PAT 一致,可打 REST 與 `/mcp`。
 
 ## 16. 未確認事項
 
