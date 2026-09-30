@@ -20,7 +20,7 @@ from sqlmodel import Session, select
 from . import errors
 from .auth import decode_token
 from .database import get_session
-from .models import Book, BookMember, Chapter, PersonalAccessToken, User, utcnow
+from .models import Book, BookMember, Chapter, OAuthTokenRow, PersonalAccessToken, User, utcnow
 
 # Roles that may edit chapters / content / media.
 EDIT_ROLES = {"owner", "editor"}
@@ -31,6 +31,10 @@ VIEW_ROLES = {"owner", "editor", "reviewer", "viewer"}
 
 
 PAT_PREFIX = "kkb_"
+OAUTH_ACCESS_PREFIX = "kko_"
+OAUTH_REFRESH_PREFIX = "kkr_"
+# 非網頁 JWT 的 token 前綴:不可用來建 PAT 或核准 OAuth 授權。
+NON_JWT_PREFIXES = (PAT_PREFIX, OAUTH_ACCESS_PREFIX, OAUTH_REFRESH_PREFIX)
 
 
 def hash_pat(token: str) -> str:
@@ -38,15 +42,29 @@ def hash_pat(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+def _expired(iso: Optional[str]) -> bool:
+    return bool(iso) and datetime.fromisoformat(iso) <= datetime.now(timezone.utc)
+
+
 def user_from_token(session: Session, token: str) -> Optional[User]:
-    """Resolve a Bearer token (JWT or PAT) to its user, or None if invalid."""
+    """Resolve a Bearer token (JWT, PAT or OAuth access) to its user, or None if invalid."""
+    if token.startswith(OAUTH_ACCESS_PREFIX):
+        row = session.exec(
+            select(OAuthTokenRow).where(OAuthTokenRow.token_hash == hash_pat(token))
+        ).first()
+        if row is None or row.revoked_at is not None or _expired(row.expires_at):
+            return None
+        row.last_used_at = utcnow()
+        session.add(row)
+        session.commit()
+        return session.get(User, row.user_id)
     if token.startswith(PAT_PREFIX):
         pat = session.exec(
             select(PersonalAccessToken).where(PersonalAccessToken.token_hash == hash_pat(token))
         ).first()
         if pat is None or pat.revoked_at is not None:
             return None
-        if pat.expires_at and datetime.fromisoformat(pat.expires_at) <= datetime.now(timezone.utc):
+        if _expired(pat.expires_at):
             return None
         pat.last_used_at = utcnow()
         session.add(pat)
