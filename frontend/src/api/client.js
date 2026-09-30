@@ -53,6 +53,10 @@ export const api = {
   login: (b) => request('POST', '/auth/login', b),
   me: () => request('GET', '/auth/me'),
 
+  // MCP OAuth 同意頁
+  oauthConsentInfo: (req) => request('GET', `/oauth/consent?req=${encodeURIComponent(req)}`),
+  oauthConsent: (b) => request('POST', '/oauth/consent', b),
+
   // Books
   listBooks: (q = '') => request('GET', `/books${q}`),
   createBook: (b) => request('POST', '/books', b),

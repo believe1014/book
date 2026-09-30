@@ -1,13 +1,21 @@
 import { useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { api } from '../api/client'
 import { toast } from '../store/toast'
+
+// RequireAuth 帶來的 state.from(location 物件)→ 站內相對路徑;其他一律回首頁(防 open redirect)。
+function backTo(from) {
+  const path = from?.pathname
+  if (typeof path !== 'string' || !path.startsWith('/') || path.startsWith('//')) return '/'
+  return path + (from.search || '')
+}
 
 // S1 login / register (spec FR-01/02, design.md §7 S1).
 export default function AuthPage({ mode }) {
   const isLogin = mode === 'login'
   const navigate = useNavigate()
+  const location = useLocation()
   const [params] = useSearchParams()
   const inviteToken = params.get('invite')
   const { login, register } = useAuth()
@@ -38,7 +46,7 @@ export default function AuthPage({ mode }) {
           /* fall through to bookshelf */
         }
       }
-      navigate('/')
+      navigate(backTo(location.state?.from))
     } catch (e2) {
       setErr(e2.message || '操作失敗')
     } finally {
@@ -96,9 +104,9 @@ export default function AuthPage({ mode }) {
 
         <p className="text-sm" style={{ textAlign: 'center', marginTop: 20 }}>
           {isLogin ? (
-            <>還沒有帳號？ <Link to={`/register${inviteToken ? `?invite=${inviteToken}` : ''}`}>註冊</Link></>
+            <>還沒有帳號？ <Link to={`/register${inviteToken ? `?invite=${inviteToken}` : ''}`} state={location.state}>註冊</Link></>
           ) : (
-            <>已有帳號？ <Link to={`/login${inviteToken ? `?invite=${inviteToken}` : ''}`}>登入</Link></>
+            <>已有帳號？ <Link to={`/login${inviteToken ? `?invite=${inviteToken}` : ''}`} state={location.state}>登入</Link></>
           )}
         </p>
       </div>

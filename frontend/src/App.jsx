@@ -7,6 +7,7 @@ import Bookshelf from './pages/Bookshelf'
 import Editor from './pages/Editor'
 import InviteLanding from './pages/InviteLanding'
 import GuidePage from './pages/GuidePage'
+import OAuthConsent from './pages/OAuthConsent'
 
 function RequireAuth({ children }) {
   const { user, loading } = useAuth()
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="/guide/reviewer" element={<GuidePage which="reviewer" />} />
         <Route path="/" element={<RequireAuth><Bookshelf /></RequireAuth>} />
         <Route path="/books/:id" element={<RequireAuth><Editor /></RequireAuth>} />
+        <Route path="/oauth/consent" element={<RequireAuth><OAuthConsent /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <Toaster />
