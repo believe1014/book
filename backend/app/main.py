@@ -60,7 +60,8 @@ async def security_headers(request, call_next):
 
 
 # OAuth 端點限流(spec §8,同 govmeet):POST /register 每 IP 10 次/小時、POST /token 30 次/分。
-# 註:與登入限流相同,反向代理後 client.host 是代理 IP(見 routers/auth.py login 的註解)。
+# 註:client.host 是真實來源 IP——uvicorn proxy headers 依 X-Forwarded-For 改寫,
+# 正式站以 FORWARDED_ALLOW_IPS 限定只信任 docker 網路閘道(host nginx)。
 OAUTH_LIMITS = {"/register": (10, 3600), "/token": (30, 60)}
 
 

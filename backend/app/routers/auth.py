@@ -60,8 +60,8 @@ def register(body: RegisterIn, session: Session = Depends(get_session)):
 @router.post("/login", response_model=None)
 def login(body: LoginIn, request: Request, session: Session = Depends(get_session)):
     # S3：登入暴力破解限流（行程內，keyed by client_ip + email）。
-    # 註：反向代理後 request.client.host 會是代理 IP；若日後導入可信代理，
-    # 應改用 X-Forwarded-For 的最右可信段。目前直接以連線來源 IP 計數。
+    # 註：request.client.host 是真實來源 IP——uvicorn proxy headers 依 X-Forwarded-For 改寫，
+    # 正式站以 FORWARDED_ALLOW_IPS 限定只信任 docker 網路閘道（host nginx）。
     client_ip = request.client.host if request.client else "unknown"
     if login_rate_limiter.is_blocked(client_ip, body.email):
         raise errors.too_many_requests("登入嘗試次數過多，請稍後再試")
