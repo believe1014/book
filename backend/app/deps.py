@@ -10,6 +10,8 @@ Resolution rule (spec §6.7): look up book_members for the user's role, then
 check against the matrix. If the book is missing/soft-deleted, return 404 to
 non-members (don't leak existence).
 """
+import hashlib
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import Depends, Header
@@ -18,7 +20,7 @@ from sqlmodel import Session, select
 from . import errors
 from .auth import decode_token
 from .database import get_session
-from .models import Book, BookMember, Chapter, User
+from .models import Book, BookMember, Chapter, PersonalAccessToken, User, utcnow
 
 # Roles that may edit chapters / content / media.
 EDIT_ROLES = {"owner", "editor"}
@@ -28,21 +30,57 @@ COMMENT_ROLES = {"owner", "editor", "reviewer"}
 VIEW_ROLES = {"owner", "editor", "reviewer", "viewer"}
 
 
+PAT_PREFIX = "kkb_"
+
+
+def hash_pat(token: str) -> str:
+    # sha256 is enough: PATs are 256-bit random values, not user passwords.
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def user_from_token(session: Session, token: str) -> Optional[User]:
+    """Resolve a Bearer token (JWT or PAT) to its user, or None if invalid."""
+    if token.startswith(PAT_PREFIX):
+        pat = session.exec(
+            select(PersonalAccessToken).where(PersonalAccessToken.token_hash == hash_pat(token))
+        ).first()
+        if pat is None or pat.revoked_at is not None:
+            return None
+        if pat.expires_at and datetime.fromisoformat(pat.expires_at) <= datetime.now(timezone.utc):
+            return None
+        pat.last_used_at = utcnow()
+        session.add(pat)
+        session.commit()
+        return session.get(User, pat.user_id)
+    user_id = decode_token(token)
+    return session.get(User, user_id) if user_id is not None else None
+
+
+def _bearer(authorization: Optional[str]) -> str:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise errors.unauthorized()
+    return authorization.split(" ", 1)[1].strip()
+
+
 def get_current_user(
     authorization: Optional[str] = Header(default=None),
     session: Session = Depends(get_session),
 ) -> User:
-    """Resolve the current user from the Bearer JWT (spec FR-03)."""
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise errors.unauthorized()
-    token = authorization.split(" ", 1)[1].strip()
-    user_id = decode_token(token)
-    if user_id is None:
-        raise errors.unauthorized()
-    user = session.get(User, user_id)
+    """Resolve the current user from the Bearer JWT or PAT (spec FR-03)."""
+    user = user_from_token(session, _bearer(authorization))
     if user is None:
         raise errors.unauthorized()
     return user
+
+
+def get_current_user_jwt(
+    authorization: Optional[str] = Header(default=None),
+    session: Session = Depends(get_session),
+) -> User:
+    """Web-login (JWT) only — a PAT may not mint or revoke PATs."""
+    if _bearer(authorization).startswith(PAT_PREFIX):
+        raise errors.forbidden("此操作需以網頁登入的 token 進行，不接受個人存取 token")
+    return get_current_user(authorization, session)
 
 
 def get_membership(session: Session, book_id: int, user_id: int) -> Optional[BookMember]:

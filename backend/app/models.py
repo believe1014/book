@@ -132,3 +132,18 @@ class MediaAsset(SQLModel, table=True):
     ref_count: int = Field(default=0)
     uploaded_by: Optional[int] = Field(default=None, foreign_key="users.id")
     created_at: str = Field(default_factory=utcnow)
+
+
+class PersonalAccessToken(SQLModel, table=True):
+    """Long-lived token for MCP/API clients. Only the sha256 of the token is stored."""
+    __tablename__ = "personal_access_tokens"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    name: str
+    token_hash: str = Field(unique=True, index=True)
+    prefix: str  # first chars of the plaintext, for identification in listings
+    created_at: str = Field(default_factory=utcnow)
+    last_used_at: Optional[str] = None
+    expires_at: Optional[str] = None
+    revoked_at: Optional[str] = None

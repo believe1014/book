@@ -1,9 +1,9 @@
 """MCP server exposing the 協作撰書系統 as tools (remote streamable HTTP).
 
 Mounted onto the FastAPI app at /mcp so it ships with the same deployment.
-Every tool authenticates with the same JWT the web app issues: the MCP client
-must send `Authorization: Bearer <token>` (obtain a token from
-POST /api/auth/login). Permission checks reuse the app's role matrix, so an MCP
+Every tool authenticates with a Bearer token: either the web JWT
+(POST /api/auth/login, short-lived) or a personal access token `kkb_...`
+(POST /api/tokens, long-lived — preferred for MCP clients). Permission checks reuse the app's role matrix, so an MCP
 caller can only touch books they are a member of.
 """
 import json
@@ -21,10 +21,9 @@ try:  # clean error messages to the client when available
 except Exception:  # pragma: no cover - fallback for older SDKs
     ToolError = ValueError
 
-from .auth import decode_token
 from .config import settings
 from .database import engine
-from .deps import EDIT_ROLES
+from .deps import EDIT_ROLES, user_from_token
 from .models import (
     Book, BookMember, Chapter, ChapterContent, Comment, ContentVersion, User, utcnow,
 )
@@ -48,7 +47,7 @@ mcp_server = FastMCP(
     instructions=(
         "Tools to manage collaborative book-writing projects: list/create books, "
         "manage chapters (max two levels), and read/write chapter content. "
-        "Authenticate with a Bearer JWT from POST /api/auth/login."
+        "Authenticate with a Bearer JWT from POST /api/auth/login or a personal access token (kkb_...) from POST /api/tokens."
     ),
     stateless_http=True,
     json_response=True,
@@ -65,12 +64,9 @@ def _current_user(ctx: Context, session: Session) -> User:
     authz = req.headers.get("authorization", "") if req is not None else ""
     if not authz.lower().startswith("bearer "):
         raise ToolError("未授權：請在 Authorization 標頭帶入 Bearer <token>")
-    user_id = decode_token(authz.split(" ", 1)[1].strip())
-    if user_id is None:
-        raise ToolError("未授權：token 無效或已過期")
-    user = session.get(User, user_id)
+    user = user_from_token(session, authz.split(" ", 1)[1].strip())
     if user is None:
-        raise ToolError("未授權：使用者不存在")
+        raise ToolError("未授權：token 無效、已過期或已撤銷")
     return user
 
 
