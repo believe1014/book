@@ -286,6 +286,18 @@ def test_expired_code_rejected(client, auth):
     assert r.status_code == 400 and r.json()["error"] == "invalid_grant"
 
 
+def test_expired_refresh_rejected_and_fresh_refresh_ok(client, auth):
+    cid, tok = _http_tokens(client, auth)
+    ok = client.post("/token", data={"grant_type": "refresh_token", "client_id": cid, "refresh_token": tok["refresh_token"]})
+    assert ok.status_code == 200, ok.text  # 未過期的 refresh 仍可換發
+    with Session(engine) as s:
+        row = s.exec(select(OAuthTokenRow)).one()  # 輪替是原地更新,只有一列
+        row.refresh_expires_at = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+        s.add(row)
+        s.commit()
+    r = client.post("/token", data={"grant_type": "refresh_token", "client_id": cid, "refresh_token": ok.json()["refresh_token"]})
+    assert r.status_code == 400 and r.json()["error"] == "invalid_grant"
+
 def test_authorize_bad_redirect_never_redirects(client):
     cid = _http_register(client).json()["client_id"]
     r = _http_authorize(client, cid, _pkce()[1], redirect="https://evil.com/cb")
