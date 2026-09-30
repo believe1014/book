@@ -35,6 +35,12 @@ def _load(session: Session, req: str):
     return p, client
 
 
+def redirect_origin(uri: str) -> str:
+    """只用 scheme/hostname/port 組(不用 netloc,避免 userinfo 偽裝成 localhost)。"""
+    u = urlparse(uri)
+    return f"{u.scheme}://{u.hostname}{':' + str(u.port) if u.port else ''}"
+
+
 @router.get("/consent", response_model=None)
 def consent_info(
     req: str,
@@ -42,10 +48,9 @@ def consent_info(
     session: Session = Depends(get_session),
 ):
     p, client = _load(session, req)
-    u = urlparse(p["ru"])
     return {"data": {
         "client_name": client.client_name or "未命名的應用程式",
-        "redirect_origin": f"{u.scheme}://{u.netloc}",
+        "redirect_origin": redirect_origin(p["ru"]),
     }}
 
 

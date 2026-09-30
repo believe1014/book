@@ -1,9 +1,8 @@
 """MCP server exposing the 協作撰書系統 as tools (remote streamable HTTP).
 
 Mounted onto the FastAPI app at /mcp so it ships with the same deployment.
-Every tool authenticates with a Bearer token: either the web JWT
-(POST /api/auth/login, short-lived) or a personal access token `kkb_...`
-(POST /api/tokens, long-lived — preferred for MCP clients). Permission checks reuse the app's role matrix, so an MCP
+Every tool authenticates with a Bearer token: OAuth access token (clients get
+401 + WWW-Authenticate and run the OAuth flow), personal access token `kkb_...`, or web JWT. Permission checks reuse the app's role matrix, so an MCP
 caller can only touch books they are a member of.
 """
 import json
@@ -42,7 +41,7 @@ if _allowed_hosts:
     )
 else:
     # No allowlist configured → don't reject by Host (works behind any domain).
-    # Safe because every tool requires a Bearer JWT.
+    # Safe because every tool requires a valid Bearer token (OAuth / PAT / JWT).
     _transport_security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
 
 class KkbookTokenVerifier:
@@ -68,7 +67,8 @@ mcp_server = FastMCP(
     instructions=(
         "Tools to manage collaborative book-writing projects: list/create books, "
         "manage chapters (max two levels), and read/write chapter content. "
-        "Authenticate with a Bearer JWT from POST /api/auth/login or a personal access token (kkb_...) from POST /api/tokens."
+        "This server supports OAuth (unauthenticated clients get 401 + WWW-Authenticate and should run the OAuth flow); "
+        "it also accepts a personal access token (kkb_...) or a JWT as a Bearer token."
     ),
     stateless_http=True,
     json_response=True,

@@ -51,6 +51,8 @@ def _ts(iso: str) -> float:
 def redirect_uri_allowed(uri: str) -> bool:
     """https 任意主機,或 http 僅限 localhost / 127.0.0.1(用 hostname 判斷,擋 userinfo 繞過)。"""
     u = urlparse(uri)
+    if u.username or u.password or u.fragment:  # 擋 userinfo 偽裝主機、fragment
+        return False
     return u.scheme == "https" or (u.scheme == "http" and u.hostname in ("localhost", "127.0.0.1"))
 
 

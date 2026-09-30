@@ -413,3 +413,19 @@ def test_revoke_endpoint_then_mcp_401(client, auth):
     assert _mcp(client, {"Authorization": f"Bearer {tok['access_token']}"}).status_code == 401
     r = client.post("/token", data={"grant_type": "refresh_token", "client_id": cid, "refresh_token": tok["refresh_token"]})
     assert r.status_code == 400
+
+
+# ---------- 最終審查修正:userinfo 偽裝 ----------
+@pytest.mark.parametrize("uri", [
+    "https://localhost:3334@evil.com/cb",
+    "https://user:pw@good.com/cb",
+    "https://good.com/cb#frag",
+])
+def test_register_http_rejects_userinfo_and_fragment(client, uri):
+    assert _http_register(client, redirect=uri).status_code == 400
+
+
+def test_redirect_origin_uses_hostname_and_port():
+    from app.routers.oauth_consent import redirect_origin
+    assert redirect_origin("https://good.com:8443/cb?x=1") == "https://good.com:8443"
+    assert redirect_origin("http://localhost/cb") == "http://localhost"

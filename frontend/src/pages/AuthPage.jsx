@@ -7,7 +7,7 @@ import { toast } from '../store/toast'
 // RequireAuth 帶來的 state.from(location 物件)→ 站內相對路徑;其他一律回首頁(防 open redirect)。
 function backTo(from) {
   const path = from?.pathname
-  if (typeof path !== 'string' || !path.startsWith('/') || path.startsWith('//')) return '/'
+  if (typeof path !== 'string' || !/^\/(?![\/\\])/.test(path) || path.includes('\\')) return '/'
   return path + (from.search || '')
 }
 
