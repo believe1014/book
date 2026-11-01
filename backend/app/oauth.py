@@ -36,7 +36,7 @@ from .models import OAuthClientRow, OAuthCodeRow, OAuthTokenRow, utcnow
 
 CODE_TTL = timedelta(minutes=10)
 REQ_TTL = timedelta(minutes=10)
-REFRESH_TTL = timedelta(days=90)
+REFRESH_TTL = timedelta(days=365)
 REQ_TYP = "oauth_req"
 
 

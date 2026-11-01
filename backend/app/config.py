@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     # MCP OAuth(spec 2026-09-30-mcp-oauth-design §8/§10):issuer 與 resource 的對外網址,
     # 固定由設定給、不從 Host 推。production 必須設成 https(security_checks 會擋)。
     public_base_url: str = "http://localhost:8000"
-    oauth_access_ttl_days: int = 30
+    oauth_access_ttl_days: int = 365
 
 
 settings = Settings()

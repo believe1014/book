@@ -121,7 +121,7 @@ def test_code_single_use_and_hash_only(client, auth):
     assert ac.subject == str(auth["user"]["id"]) and str(ac.redirect_uri) == REDIRECT
     tokens = run(provider.exchange_authorization_code(info, ac))
     assert tokens.access_token.startswith("kko_") and tokens.refresh_token.startswith("kkr_")
-    assert tokens.expires_in == 30 * 86400
+    assert tokens.expires_in == 365 * 86400
     assert run(provider.load_authorization_code(info, code)) is None
     with pytest.raises(TokenError):  # 併發重放:load 過但被別人先換掉
         run(provider.exchange_authorization_code(info, ac))
