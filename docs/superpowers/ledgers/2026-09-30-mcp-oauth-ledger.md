@@ -39,7 +39,7 @@ Ruling: T6 部署、T7 dotfiles push:使用者有長期「改完即部署」授�
 | C3 | T6 Step 1(c) 稱「uvicorn 目前沒開 --proxy-headers」並「本任務不改」;Review Focus 5 同 | **與使用者追加需求衝突**,且事實不準:uvicorn 0.34 的 `--proxy-headers` **預設已開**,只是 `forwarded-allow-ips` 預設只信 `127.0.0.1`;容器內看到的來源是 docker bridge 閘道 IP,故 X-Forwarded-For 被忽略。建議裁定:見 D |
 | C4 | 規格 §10「production 缺 BOOK_PUBLIC_BASE_URL 應拒絕啟動」 | 計畫 T3 Step 3e 符合。一致 |
 | C5 | 規格 §8 限流「per-IP」 vs 計畫 main.py 註解「反向代理後 client.host 是代理 IP」 | 套用 D 後該註解(main.py 新增處與 routers/auth.py:63-64)會過時;T6 加 proxy 設定時一併更新註解(純註解) |
-| C6 | 逐字重複邏輯 | 無整段逐字重複。輕微近似:測試中「parse_qs(urlparse(_http_authorize(...).headers['location']).query)['req'][0]」出現 3 次(T3 deny/tamper/mint 測試);`load_refresh_token` 與 `load_access_token` 結構相似但欄位不同;`KkbookTokenVerifier` 與 `_current_user` 都呼叫 user_from_token。審查若嫌重複,建議裁定:可抽 `_req_from(resp)` 測試 helper(不影響計畫驗收),生產碼不動 |
+| C6 | 逐字重複邏輯 | 無整段逐字重複。輕微近似:測試中「parse_qs(urlparse(_http_authorize(...).headers['location']).query)['req'][0]」出現 3 次(T3 deny/tamper/mint 測試);`load_refresh_token` 與 `load_access_token` 結構相似但欄位不同;`BookTokenVerifier` 與 `_current_user` 都呼叫 user_from_token。審查若嫌重複,建議裁定:可抽 `_req_from(resp)` 測試 helper(不影響計畫驗收),生產碼不動 |
 | C7 | 不斷言任何事的測試 | 無。`test_spa_get_routes_still_served` 在 dist 缺時整個 skip(等同未驗,見發現 1);`test_rate_limiter_keys_are_independent` 有斷言。一致 |
 | C8 | `test_oauth_tables_exist...` 以 IntegrityError 驗唯一性 | 有效(SQLite 會擋 UNIQUE)。一致 |
 | C9 | SDK 介面核對(mcp 1.27.2 實際原始碼) | `construct_redirect_uri(base, **params)` 會略過 None(state 缺時不帶);`create_protected_resource_routes(resource_url, authorization_servers)` 簽章相符;`RevocationRequest.client_secret` 為必填(可空字串)與計畫測試註解相符;`create_auth_routes` 會 `validate_issuer_url`(非 https 僅允許 localhost),故開發預設 `http://localhost:8000` 可、其他 http 主機會啟動失敗,屬預期 |
@@ -111,8 +111,8 @@ Task 6: smoke 全過(401+WWW-Authenticate 完整比對、PRM、AS metadata issue
 Ruling: T6 不另派任務審查 — 程式變更只有兩處註解,其餘為伺服器設定且已由逐項 smoke test 驗證 — 若設定有誤,T8 實機授權會暴露
 Task 6: complete (commits 78b83cc..64c4a0c on main, smoke clean)
 Task 7: dispatched
-Task 7: dotfiles 53c0479 pushed(只改 sources/mcp.yaml);59 passed;dry-run 無變更 — sync 的 _deep_merge 不刪鍵(06 踩雷已知),~/.claude.json 的 kkbook headers 殘留
-Ruling: 採選項 1(使用者先 `claude mcp remove kkbook -s user` 再 sync)而非改 sync/targets.py — 04 協議把 sync/*.py 列為先問;一次性清除即可 — 若日後再有要刪的鍵,仍會踩同一個坑
+Task 7: dotfiles 53c0479 pushed(只改 sources/mcp.yaml);59 passed;dry-run 無變更 — sync 的 _deep_merge 不刪鍵(06 踩雷已知),~/.claude.json 的 book headers 殘留
+Ruling: 採選項 1(使用者先 `claude mcp remove book -s user` 再 sync)而非改 sync/targets.py — 04 協議把 sync/*.py 列為先問;一次性清除即可 — 若日後再有要刪的鍵,仍會踩同一個坑
 Task 7: complete (dotfiles 53c0479) — 待使用者執行移除+sync
 Task 8: 待使用者 — 移除舊項、sync、/mcp 授權、同意頁手動檢查
 Task 8: 使用者 /mcp 授權成功;OAuth token 呼叫 list_books(4 本)與 get_chapter_content(120,Markdown 帶 > )成功 — complete

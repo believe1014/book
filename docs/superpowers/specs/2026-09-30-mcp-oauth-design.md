@@ -1,4 +1,6 @@
-# kkbook MCP OAuth 設計(比照 govmeet)
+# book MCP OAuth 設計(比照 govmeet)
+
+> 2026-11-14 改名註記:系統更名為 book。新發 token 前綴改為 PAT `bk_`、OAuth access `bko_`、refresh `bkr_`;改名前的 `kkb_`/`kko_`/`kkr_` 仍照收(見 `backend/app/deps.py`)。本文下方提到的舊前綴為設計當時的值。
 
 - 日期:2026-09-30
 - 狀態:設計已核准(2026-09-30);§15 四項已由使用者決定(全採建議),實作計畫見 `docs/superpowers/plans/2026-09-30-mcp-oauth.md`
@@ -6,10 +8,10 @@
 
 ## 1. 目標與不做的事
 
-**目標**:使用者在 Claude Code `/mcp` 按下 kkbook 的授權 → 瀏覽器開 book.believe.center → (未登入就先登入)→ 按同意 → 回到 Claude Code 即可用,不用再手動貼 `Authorization` token。
+**目標**:使用者在 Claude Code `/mcp` 按下 book 的授權 → 瀏覽器開 book.believe.center → (未登入就先登入)→ 按同意 → 回到 Claude Code 即可用,不用再手動貼 `Authorization` token。
 
 **不做**:
-- 不接 kklab.me 站群單一登入(kkbook 帳號系統獨立,govmeet 的 `kk_home` cookie 那條路不適用)。
+- 不接 kklab.me 站群單一登入(book 帳號系統獨立,govmeet 的 `kk_home` cookie 那條路不適用)。
 - 不做 scope 細分(一個 token 等同該使用者全部權限,和現在的 PAT 一樣;權限仍由 book_members 角色矩陣管)。
 - 不做「已授權應用程式」管理頁(govmeet 也沒有);撤銷先靠 RFC 7009 `/revoke` 與 DB。需要時再加。
 - 不移除 JWT / PAT:三種 token 並存。
@@ -35,7 +37,7 @@
 | 與站群登入 | `requireAuth` 接受自家 `gm_session` 或 kklab.me/org 發的 HMAC cookie `kk_home`,所以在 kklab.me 登入過,authorize 就直接到同意頁 | `lab/meet/src/plugins/auth.js:52-75`、`src/auth/kklab-session.js` |
 | 客戶端設定 | mcp.yaml 只寫 `type: http` + `url: https://kklab.me/mcp`,無 header,只給 claude-cli | `dotfiles-ai/sources/mcp.yaml:48-52` |
 
-## 3. kkbook 現況(要改的點)
+## 3. book 現況(要改的點)
 
 - `backend/app/deps.py:41-56` `user_from_token`:`kkb_` 開頭查 PAT,否則當 JWT 解。
 - `deps.py:76-83` `get_current_user_jwt` 只擋 `kkb_`;**新增 OAuth token 後若不改,OAuth token 會被當 JWT 以外的「非 PAT」放行去建 PAT**(雖然 decode 會失敗回 401,但規則要明寫成「只收 JWT」)。
@@ -57,8 +59,8 @@
 
 1. **Authorization Server**:實作 `OAuthAuthorizationServerProvider`(新檔 `backend/app/oauth.py`),呼叫 SDK 的 `create_auth_routes(provider, issuer_url=BOOK_PUBLIC_BASE_URL, client_registration_options=ClientRegistrationOptions(enabled=True), revocation_options=RevocationOptions(enabled=True))`,把回傳的 Starlette routes **掛在主 app 根層**(插在 SPA catch-all 之前)。
    - 不用 `FastMCP(auth_server_provider=...)` 的理由:那會把 AS 路由放進掛在 `/mcp` 的子 app,實際網址變成 `/mcp/.well-known/...`,違反 RFC 8414 根層 discovery。
-2. **Resource Server**:`FastMCP(..., auth=AuthSettings(issuer_url=BASE, resource_server_url=f"{BASE}/mcp/"), token_verifier=KkbookTokenVerifier())`。SDK 自動在 `/mcp/` 前面加 `RequireAuthMiddleware` → 未授權回 401 + `WWW-Authenticate`。
-   - `KkbookTokenVerifier.verify_token(token)` 直接呼叫既有 `user_from_token`,有使用者就回 `AccessToken(token=token, client_id=..., scopes=[])`。所以 **JWT、PAT、OAuth 三者都通過同一個 verifier**。
+2. **Resource Server**:`FastMCP(..., auth=AuthSettings(issuer_url=BASE, resource_server_url=f"{BASE}/mcp/"), token_verifier=BookTokenVerifier())`。SDK 自動在 `/mcp/` 前面加 `RequireAuthMiddleware` → 未授權回 401 + `WWW-Authenticate`。
+   - `BookTokenVerifier.verify_token(token)` 直接呼叫既有 `user_from_token`,有使用者就回 `AccessToken(token=token, client_id=..., scopes=[])`。所以 **JWT、PAT、OAuth 三者都通過同一個 verifier**。
    - `_current_user` 不動(它仍從 header 取 token 再走 `user_from_token`),工具程式零修改。
    - PRM 路由由我們在根層自行用 `create_protected_resource_routes()` 註冊(子 app 內的那份同樣會落在 `/mcp/` 底下,不可靠),並額外註冊裸 `/.well-known/oauth-protected-resource` 供只查根層的客戶端。
 3. **授權/同意頁放前端 SPA**(與 govmeet 不同,理由見 §6.3)。
@@ -103,18 +105,18 @@ oauth_tokens  : id PK | token_hash UNIQUE | refresh_hash UNIQUE | client_id FK |
 ### 6.3 token 格式
 
 - access:`kko_` + `secrets.token_urlsafe(32)`;refresh:`kkr_` + `secrets.token_urlsafe(32)`;code:`secrets.token_urlsafe(32)`。DB 只存 sha256(沿用 `deps.hash_pat`)。
-- **與 govmeet 不同**:govmeet 無前綴。kkbook 的 `user_from_token` 靠前綴分流 JWT / PAT,所以 OAuth token 也要前綴,才不會落到 JWT decode。
+- **與 govmeet 不同**:govmeet 無前綴。book 的 `user_from_token` 靠前綴分流 JWT / PAT,所以 OAuth token 也要前綴,才不會落到 JWT decode。
 - `user_from_token` 新增分支:`kko_` → 查 `oauth_tokens`(未撤銷、未過期)→ 更新 `last_used_at` → 回 User。
 - `get_current_user_jwt` 改成「只收 JWT」:任何 `kkb_` / `kko_` / `kkr_` 前綴都拒絕(不能用 OAuth token 建 PAT 或核准新授權)。
 
 ## 7. 授權頁 UX
 
-**與 govmeet 不同:同意頁放前端 SPA,不由後端渲染。** 理由:govmeet 的網頁登入是 cookie,後端在 `/oauth/authorize` 就知道誰登入;kkbook 網頁登入是 localStorage 裡的 JWT,瀏覽器導到後端時**不會帶上**,後端無從判斷是否已登入。改成 cookie 牽動整個前端 auth,範圍過大。
+**與 govmeet 不同:同意頁放前端 SPA,不由後端渲染。** 理由:govmeet 的網頁登入是 cookie,後端在 `/oauth/authorize` 就知道誰登入;book 網頁登入是 localStorage 裡的 JWT,瀏覽器導到後端時**不會帶上**,後端無從判斷是否已登入。改成 cookie 牽動整個前端 auth,範圍過大。
 
 流程:
 1. Claude Code 開瀏覽器到 `/authorize?...` → SDK 驗完 → 302 到 `/oauth/consent?req=...`。
 2. SPA `RequireAuth`:
-   - **已登入**:直接顯示同意卡——「**Claude Code**(client_name)要求以你的身分使用 kkbook MCP 工具(列書、讀寫章節);授權後將轉往 `http://localhost:xxxx`」,按鈕「同意」「拒絕」。一次點擊完成。
+   - **已登入**:直接顯示同意卡——「**Claude Code**(client_name)要求以你的身分使用 book MCP 工具(列書、讀寫章節);授權後將轉往 `http://localhost:xxxx`」,按鈕「同意」「拒絕」。一次點擊完成。
    - **未登入**:導 `/login`,登入後**回到同意頁**。需小改 `AuthPage.jsx:41`:`navigate(location.state?.from ?? '/')`(只接受站內相對路徑,防 open redirect)。
 3. 同意 → `POST /api/oauth/consent` → 前端整頁跳 `redirect_url` → Claude Code 收到 code → `/token` 換 token → 完成。
 4. 錯誤態:`req` 過期(>10 分鐘)→ 顯示「授權請求已過期,請回 Claude Code 重新按授權」,不轉導。
@@ -123,7 +125,7 @@ oauth_tokens  : id PK | token_hash UNIQUE | refresh_hash UNIQUE | client_id FK |
 
 ## 8. 效期與限流
 
-| 項目 | govmeet | kkbook(已決定) |
+| 項目 | govmeet | book(已決定) |
 |---|---|---|
 | authorization code | 10 分鐘、單次 | 同 |
 | consent `req` | (無,參數放 hidden form) | 10 分鐘(JWT exp) |
@@ -134,7 +136,7 @@ oauth_tokens  : id PK | token_hash UNIQUE | refresh_hash UNIQUE | client_id FK |
 
 access 不採「短效(如 1 小時)」的理由:Claude Code 多個並行 session 共用同一份 OAuth 憑證,輪替式 refresh 在並發時會互相作廢(使用者已踩過 Claude Code 自身同類 bug,見 memory「Claude Code 反覆登入問題」)。access 長 → refresh 很少發生 → 競態機率低。這是有取捨的選擇,使用者已決定採 30 天 / 90 天(§15-1)。
 
-限流:kkbook 已有 `backend/app/services/rate_limit.py`(`login_rate_limiter`,用於 `routers/auth.py:66-75`)。實作時先看它能否泛用;不能就寫最小的 per-IP 滑動窗(`# ponytail:` 單程序記憶體,多副本時改 DB/Redis)。SDK 的 handler 本身不限流,需在 provider 或以 Starlette middleware 包 `/register`、`/token`。
+限流:book 已有 `backend/app/services/rate_limit.py`(`login_rate_limiter`,用於 `routers/auth.py:66-75`)。實作時先看它能否泛用;不能就寫最小的 per-IP 滑動窗(`# ponytail:` 單程序記憶體,多副本時改 DB/Redis)。SDK 的 handler 本身不限流,需在 provider 或以 Starlette middleware 包 `/register`、`/token`。
 
 ## 9. 與 JWT / PAT 並存
 
@@ -144,7 +146,7 @@ access 不採「短效(如 1 小時)」的理由:Claude Code 多個並行 sessio
 | PAT | `kkb_...`,預設 365 天 | REST + MCP | 否 |
 | OAuth access | `kko_...`,30 天 | REST + MCP | 否 |
 
-**與 govmeet 不同**:govmeet `/mcp` 只收 OAuth token。kkbook 三者都收,理由:Claude Desktop / codex 若暫時保留 PAT header(§11),`/mcp` 必須繼續收 PAT;而 JWT 收或不收對安全無差(它本來就能打全部 REST)。OAuth token 也能打 REST 是順帶結果(共用 `user_from_token`);使用者已決定**不限縮**(§15-4)。日後若要限縮只給 MCP,在 `get_current_user` 擋 `kko_` 即可,一行。
+**與 govmeet 不同**:govmeet `/mcp` 只收 OAuth token。book 三者都收,理由:Claude Desktop / codex 若暫時保留 PAT header(§11),`/mcp` 必須繼續收 PAT;而 JWT 收或不收對安全無差(它本來就能打全部 REST)。OAuth token 也能打 REST 是順帶結果(共用 `user_from_token`);使用者已決定**不限縮**(§15-4)。日後若要限縮只給 MCP,在 `get_current_user` 擋 `kko_` 即可,一行。
 
 ## 10. 安全
 
@@ -167,7 +169,7 @@ access 不採「短效(如 1 小時)」的理由:Claude Code 多個並行 sessio
 改成(claude-cli 比照 govmeet 去掉 header):
 
 ```yaml
-  kkbook:
+  book:
     # base = mcp-remote 橋接(codex/claude-desktop 用)。claude-cli 走原生 http + OAuth(/mcp 按授權,免 token)。
     command: "npx"
     args: ["-y", "mcp-remote", "https://book.believe.center/mcp/", "--header", "Authorization:${AUTH_TOKEN}"]
@@ -222,14 +224,14 @@ pytest + 既有 `TestClient`(`backend/tests/conftest.py`),新增 `backend/tests/
 
 1. 線上 `https://book.believe.center/.well-known/oauth-authorization-server` 與 PRM 回 200 且內容正確。
 2. 未帶 token `POST /mcp/` → 401 + `WWW-Authenticate: Bearer ... resource_metadata="..."`。
-3. mcp.yaml 改後 sync,Claude Code `/mcp` 看到 kkbook「需要驗證」→ 按授權 → 瀏覽器登入 kkbook → 同意 → 回 Claude Code 顯示已連線。
+3. mcp.yaml 改後 sync,Claude Code `/mcp` 看到 book「需要驗證」→ 按授權 → 瀏覽器登入 book → 同意 → 回 Claude Code 顯示已連線。
 4. 在 Claude Code 呼叫 `list_books` 成功回傳書單。
 5. 既有 PAT(Desktop/codex 用的)仍可呼叫 `list_books`。
 6. `pytest` 全綠,含 `test_oauth.py`。
 
 ## 15. 使用者已決定事項(2026-09-30,四項全採建議)
 
-1. **access token 效期**:**access 30 天、refresh 90 天**(同 govmeet),env `BOOK_OAUTH_ACCESS_TTL_DAYS` 可調。理由:短效 access 在 Claude Code 多 session 並發 refresh 時會互相作廢、反覆要求授權;kkbook 是個人/小團隊工具,洩漏面仍小於 PAT(365 天)。
+1. **access token 效期**:**access 30 天、refresh 90 天**(同 govmeet),env `BOOK_OAUTH_ACCESS_TTL_DAYS` 可調。理由:短效 access 在 Claude Code 多 session 並發 refresh 時會互相作廢、反覆要求授權;book 是個人/小團隊工具,洩漏面仍小於 PAT(365 天)。
 2. **已登入時不自動核准**:保留一次點擊「同意」(同 govmeet)。理由:DCR 是公開的,自動核准等於任何人註冊一個 client 再騙使用者點連結就能拿 token。
 3. **Claude Desktop / codex 第一階段不改**:維持 PAT header;claude-cli 驗收通過後再另議(屆時 Desktop/codex 只需拿掉 mcp-remote 的 `--header`,mcp-remote 0.1.38 支援 OAuth;代價是首次啟動要開瀏覽器、回呼逾時預設 30 秒)。
 4. **OAuth token 不限縮**:與 PAT 一致,可打 REST 與 `/mcp`。

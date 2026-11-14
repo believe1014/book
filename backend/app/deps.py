@@ -30,11 +30,16 @@ COMMENT_ROLES = {"owner", "editor", "reviewer"}
 VIEW_ROLES = {"owner", "editor", "reviewer", "viewer"}
 
 
-PAT_PREFIX = "kkb_"
-OAUTH_ACCESS_PREFIX = "kko_"
-OAUTH_REFRESH_PREFIX = "kkr_"
+# 新發出的 token 用 bk_/bko_/bkr_;改名前發出的 kkb_/kko_/kkr_ 仍照收。
+# 只存 sha256,前綴僅用於分流,所以舊 token 不需遷移。
+PAT_PREFIX = "bk_"
+OAUTH_ACCESS_PREFIX = "bko_"
+OAUTH_REFRESH_PREFIX = "bkr_"
+PAT_PREFIXES = (PAT_PREFIX, "kkb_")
+OAUTH_ACCESS_PREFIXES = (OAUTH_ACCESS_PREFIX, "kko_")
+OAUTH_REFRESH_PREFIXES = (OAUTH_REFRESH_PREFIX, "kkr_")
 # 非網頁 JWT 的 token 前綴:不可用來建 PAT 或核准 OAuth 授權。
-NON_JWT_PREFIXES = (PAT_PREFIX, OAUTH_ACCESS_PREFIX, OAUTH_REFRESH_PREFIX)
+NON_JWT_PREFIXES = PAT_PREFIXES + OAUTH_ACCESS_PREFIXES + OAUTH_REFRESH_PREFIXES
 
 
 def hash_pat(token: str) -> str:
@@ -48,7 +53,7 @@ def _expired(iso: Optional[str]) -> bool:
 
 def user_from_token(session: Session, token: str) -> Optional[User]:
     """Resolve a Bearer token (JWT, PAT or OAuth access) to its user, or None if invalid."""
-    if token.startswith(OAUTH_ACCESS_PREFIX):
+    if token.startswith(OAUTH_ACCESS_PREFIXES):
         row = session.exec(
             select(OAuthTokenRow).where(OAuthTokenRow.token_hash == hash_pat(token))
         ).first()
@@ -58,7 +63,7 @@ def user_from_token(session: Session, token: str) -> Optional[User]:
         session.add(row)
         session.commit()
         return session.get(User, row.user_id)
-    if token.startswith(PAT_PREFIX):
+    if token.startswith(PAT_PREFIXES):
         pat = session.exec(
             select(PersonalAccessToken).where(PersonalAccessToken.token_hash == hash_pat(token))
         ).first()

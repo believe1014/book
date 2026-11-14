@@ -174,7 +174,7 @@ class OAuthCodeRow(SQLModel, table=True):
 
 
 class OAuthTokenRow(SQLModel, table=True):
-    """OAuth access(kko_)+ refresh(kkr_)一組一列,只存 sha256;refresh 時原地輪替。"""
+    """OAuth access(bko_,舊 kko_)+ refresh(bkr_,舊 kkr_)一組一列,只存 sha256;refresh 時原地輪替。"""
     __tablename__ = "oauth_tokens"
 
     id: Optional[int] = Field(default=None, primary_key=True)

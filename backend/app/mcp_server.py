@@ -2,7 +2,7 @@
 
 Mounted onto the FastAPI app at /mcp so it ships with the same deployment.
 Every tool authenticates with a Bearer token: OAuth access token (clients get
-401 + WWW-Authenticate and run the OAuth flow), personal access token `kkb_...`, or web JWT. Permission checks reuse the app's role matrix, so an MCP
+401 + WWW-Authenticate and run the OAuth flow), personal access token `bk_...` (legacy `kkb_...` still accepted), or web JWT. Permission checks reuse the app's role matrix, so an MCP
 caller can only touch books they are a member of.
 """
 import json
@@ -44,7 +44,7 @@ else:
     # Safe because every tool requires a valid Bearer token (OAuth / PAT / JWT).
     _transport_security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
 
-class KkbookTokenVerifier:
+class BookTokenVerifier:
     """SDK TokenVerifier:JWT / PAT / OAuth access 都走 deps.user_from_token。
 
     無效回 None → SDK RequireAuthMiddleware 回 401 + WWW-Authenticate(觸發客戶端 OAuth)。
@@ -68,14 +68,14 @@ mcp_server = FastMCP(
         "Tools to manage collaborative book-writing projects: list/create books, "
         "manage chapters (max two levels), and read/write chapter content. "
         "This server supports OAuth (unauthenticated clients get 401 + WWW-Authenticate and should run the OAuth flow); "
-        "it also accepts a personal access token (kkb_...) or a JWT as a Bearer token."
+        "it also accepts a personal access token (bk_..., legacy kkb_...) or a JWT as a Bearer token."
     ),
     stateless_http=True,
     json_response=True,
     streamable_http_path="/",
     transport_security=_transport_security,
     auth=AuthSettings(issuer_url=_base_url, resource_server_url=f"{_base_url}/mcp/"),
-    token_verifier=KkbookTokenVerifier(),
+    token_verifier=BookTokenVerifier(),
 )
 
 CHAPTER_STATUSES = {"not_started", "writing", "reviewing", "done"}

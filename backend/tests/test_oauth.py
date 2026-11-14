@@ -120,7 +120,7 @@ def test_code_single_use_and_hash_only(client, auth):
     ac = run(provider.load_authorization_code(info, code))
     assert ac.subject == str(auth["user"]["id"]) and str(ac.redirect_uri) == REDIRECT
     tokens = run(provider.exchange_authorization_code(info, ac))
-    assert tokens.access_token.startswith("kko_") and tokens.refresh_token.startswith("kkr_")
+    assert tokens.access_token.startswith("bko_") and tokens.refresh_token.startswith("bkr_")
     assert tokens.expires_in == 365 * 86400
     assert run(provider.load_authorization_code(info, code)) is None
     with pytest.raises(TokenError):  # 併發重放:load 過但被別人先換掉
@@ -166,6 +166,24 @@ def test_refresh_rotates_in_place(client, auth):
         assert user_from_token(s, t1.access_token) is None
         assert user_from_token(s, t2.access_token).id == auth["user"]["id"]
 
+
+
+def test_legacy_kko_kkr_tokens_still_accepted(client, auth):
+    """改名前發出的 kko_/kkr_(DB 只存 hash)仍可驗證與 refresh;refresh 後發新前綴。"""
+    info = _client_info()
+    run(provider.register_client(info))
+    acc, ref = "kko_" + secrets.token_urlsafe(32), "kkr_" + secrets.token_urlsafe(32)
+    far = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+    with Session(engine) as s:
+        s.add(OAuthTokenRow(client_id=info.client_id, user_id=auth["user"]["id"], token_hash=hash_pat(acc),
+                            refresh_hash=hash_pat(ref), expires_at=far, refresh_expires_at=far))
+        s.commit()
+        assert user_from_token(s, acc).id == auth["user"]["id"]
+    assert run(provider.load_access_token(acc)) is not None
+    rt = run(provider.load_refresh_token(info, ref))
+    assert rt is not None
+    t2 = run(provider.exchange_refresh_token(info, rt, []))
+    assert t2.access_token.startswith("bko_") and t2.refresh_token.startswith("bkr_")
 
 def test_revoke_kills_access_and_refresh(client, auth):
     info, code = _code_for(auth)
@@ -245,7 +263,7 @@ def test_metadata_endpoints(client):
 
 def test_full_flow_and_refresh_over_http(client, auth):
     cid, tok = _http_tokens(client, auth)
-    assert tok["token_type"] == "Bearer" and tok["access_token"].startswith("kko_")
+    assert tok["token_type"] == "Bearer" and tok["access_token"].startswith("bko_")
     me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {tok['access_token']}"})
     assert me.status_code == 200 and me.json()["data"]["user"]["id"] == auth["user"]["id"]
     r = client.post("/token", data={"grant_type": "refresh_token", "client_id": cid, "refresh_token": tok["refresh_token"]})
@@ -381,7 +399,7 @@ def _mcp(client, headers=None):
 
 
 def test_mcp_without_token_is_401_with_resource_metadata(client):
-    for h in (None, {"Authorization": "Bearer nope"}, {"Authorization": "Bearer kko_nope"}):
+    for h in (None, {"Authorization": "Bearer nope"}, {"Authorization": "Bearer kko_nope"}, {"Authorization": "Bearer bko_nope"}):
         r = _mcp(client, h)
         assert r.status_code == 401
         www = r.headers["www-authenticate"]

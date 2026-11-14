@@ -2,7 +2,7 @@
 
 spec: docs/superpowers/specs/2026-09-30-mcp-oauth-design.md(§4-§10)。
 SDK(mcp==1.27.2)負責協定驗證(PKCE S256、redirect_uri 精確比對、code 效期);
-這裡只負責存取 DB 與 kkbook 自己的規則(DCR redirect 限制、單次 code、原地輪替)。
+這裡只負責存取 DB 與 book 自己的規則(DCR redirect 限制、單次 code、原地輪替)。
 ponytail: provider 方法是 async 但內部用同步 Session(SQLite/PG 單筆查詢,毫秒級);
 流量變大再改 run_in_threadpool。
 """
@@ -31,7 +31,9 @@ from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
 
 from .config import settings
 from .database import engine
-from .deps import OAUTH_ACCESS_PREFIX, OAUTH_REFRESH_PREFIX, hash_pat
+from .deps import (
+    OAUTH_ACCESS_PREFIX, OAUTH_ACCESS_PREFIXES, OAUTH_REFRESH_PREFIX, OAUTH_REFRESH_PREFIXES, hash_pat,
+)
 from .models import OAuthClientRow, OAuthCodeRow, OAuthTokenRow, utcnow
 
 CODE_TTL = timedelta(minutes=10)
@@ -117,7 +119,7 @@ def _new_tokens() -> tuple[dict, OAuthToken]:
     return cols, OAuthToken(access_token=access, expires_in=days * 86400, refresh_token=refresh)
 
 
-class KkbookOAuthProvider:
+class BookOAuthProvider:
     """實作 mcp.server.auth.provider.OAuthAuthorizationServerProvider(Protocol)。"""
 
     async def get_client(self, client_id: str) -> Optional[OAuthClientInformationFull]:
@@ -173,7 +175,7 @@ class KkbookOAuthProvider:
     async def load_refresh_token(
         self, client: OAuthClientInformationFull, refresh_token: str
     ) -> Optional[RefreshToken]:
-        if not refresh_token.startswith(OAUTH_REFRESH_PREFIX):
+        if not refresh_token.startswith(OAUTH_REFRESH_PREFIXES):
             return None
         with Session(engine) as s:
             row = s.exec(select(OAuthTokenRow).where(OAuthTokenRow.refresh_hash == hash_pat(refresh_token))).first()
@@ -200,8 +202,8 @@ class KkbookOAuthProvider:
         return tokens
 
     async def load_access_token(self, token: str) -> Optional[AccessToken]:
-        """只給 /revoke 用;/mcp 的驗證走 mcp_server.KkbookTokenVerifier → deps.user_from_token。"""
-        if not token.startswith(OAUTH_ACCESS_PREFIX):
+        """只給 /revoke 用;/mcp 的驗證走 mcp_server.BookTokenVerifier → deps.user_from_token。"""
+        if not token.startswith(OAUTH_ACCESS_PREFIXES):
             return None
         with Session(engine) as s:
             row = s.exec(select(OAuthTokenRow).where(OAuthTokenRow.token_hash == hash_pat(token))).first()
@@ -223,7 +225,7 @@ class KkbookOAuthProvider:
             s.commit()
 
 
-provider = KkbookOAuthProvider()
+provider = BookOAuthProvider()
 
 
 def auth_routes() -> list[Route]:

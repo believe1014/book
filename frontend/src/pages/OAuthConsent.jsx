@@ -39,7 +39,7 @@ export default function OAuthConsent() {
         ) : (
           <>
             <p>
-              <strong>{info.client_name}</strong> 要求以你的身分使用 kkbook MCP 工具(列書、讀寫章節)。
+              <strong>{info.client_name}</strong> 要求以你的身分使用 book MCP 工具(列書、讀寫章節)。
             </p>
             <p className="muted text-sm">授權後將轉往 <code>{info.redirect_origin}</code></p>
             {!LOCAL_HOSTS.includes(hostOf(info.redirect_origin)) && (

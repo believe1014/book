@@ -38,7 +38,7 @@ def _mcp_status(client, tok):
 def test_create_list_revoke_and_db_stores_hash_only(client, auth):
     d = _create(client, auth)
     tok = d["token"]
-    assert tok.startswith("kkb_") and len(tok) > 40
+    assert tok.startswith("bk_") and len(tok) > 40
     assert d["prefix"] == tok[:8] and d["expires_at"]
 
     r = client.get("/api/tokens", headers=auth["headers"])
@@ -94,3 +94,17 @@ def test_auth_required_and_own_tokens_only(client, auth, user_factory):
     other = user_factory(email="b@test.com")
     assert client.get("/api/tokens", headers=other["headers"]).json()["data"] == []
     assert client.delete(f"/api/tokens/{d['id']}", headers=other["headers"]).status_code == 404
+
+
+def test_legacy_kkb_pat_still_accepted(client, auth):
+    """改名前發出的 kkb_ PAT(DB 只存 hash)仍須可用,且仍不可拿來建 PAT。"""
+    import secrets as _s
+    pat = "kkb_" + _s.token_urlsafe(32)
+    far = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+    with Session(engine) as s:
+        s.add(PersonalAccessToken(user_id=auth["user"]["id"], name="legacy", token_hash=hash_pat(pat),
+                                  prefix=pat[:8], expires_at=far))
+        s.commit()
+    assert client.get("/api/auth/me", headers=_bearer(pat)).status_code == 200
+    assert _mcp_list_books(client, pat)
+    assert client.post("/api/tokens", headers=_bearer(pat), json={"name": "x"}).status_code == 403
