@@ -68,5 +68,12 @@ class Settings(BaseSettings):
     public_base_url: str = "http://localhost:8000"
     oauth_access_ttl_days: int = 365
 
+    # believe 中央登入(SSO,account spec §9-5/§10)。未設密鑰 = SSO 關閉,行為同舊版。
+    # 不吃 BOOK_ 前綴:與 BizCanvas 共用同名環境變數。
+    believe_sso_secret: str = Field(default="", validation_alias="BELIEVE_SSO_SECRET")
+    believe_account_url: str = Field(
+        default="https://believe.center/account", validation_alias="BELIEVE_ACCOUNT_URL"
+    )
+
 
 settings = Settings()

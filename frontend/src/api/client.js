@@ -52,6 +52,8 @@ export const api = {
   register: (b) => request('POST', '/auth/register', b),
   login: (b) => request('POST', '/auth/login', b),
   me: () => request('GET', '/auth/me'),
+  authConfig: () => request('GET', '/auth/config'),
+  sso: () => request('POST', '/auth/sso'),
 
   // MCP OAuth 同意頁
   oauthConsentInfo: (req) => request('GET', `/oauth/consent?req=${encodeURIComponent(req)}`),

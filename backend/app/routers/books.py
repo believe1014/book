@@ -6,7 +6,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 
 from .. import errors
 from ..config import settings
@@ -329,7 +329,7 @@ def invite_member(
     if body.email == user.email:
         raise errors.bad_request("不能邀請自己")  # §6.4
 
-    target = session.exec(select(User).where(User.email == body.email)).first()
+    target = session.exec(select(User).where(func.lower(User.email) == body.email.lower())).first()
     if target:
         existing = get_membership(session, book_id, target.id)
         if existing:

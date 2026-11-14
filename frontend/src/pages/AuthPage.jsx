@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { api } from '../api/client'
 import { toast } from '../store/toast'
@@ -18,7 +18,7 @@ export default function AuthPage({ mode }) {
   const location = useLocation()
   const [params] = useSearchParams()
   const inviteToken = params.get('invite')
-  const { login, register } = useAuth()
+  const { login, register, user, loading, accountUrl } = useAuth()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -52,6 +52,24 @@ export default function AuthPage({ mode }) {
     } finally {
       setBusy(false)
     }
+  }
+
+  // believe 中央登入開啟:不顯示帳密表單,改導去會員入口;登入後回到原本要去的頁面。
+  if (accountUrl || loading) {
+    if (loading) return null
+    const back = inviteToken ? `/invite/${encodeURIComponent(inviteToken)}` : backTo(location.state?.from)
+    if (user) return <Navigate to={back} replace />
+    const href = `${accountUrl}/login?next=${encodeURIComponent(window.location.origin + back)}`
+    return (
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24 }}>
+        <div className="card" style={{ width: '100%', maxWidth: 400, padding: 32, textAlign: 'center' }}>
+          <div style={{ fontSize: 28, marginBottom: 4 }}>📚</div>
+          <h1 style={{ fontSize: 22, margin: 0 }}>協作撰書系統</h1>
+          <p className="muted text-sm" style={{ marginTop: 6, marginBottom: 24 }}>登入以繼續你的寫作</p>
+          <a className="btn btn-primary" style={{ width: '100%' }} href={href}>使用 believe 會員登入</a>
+        </div>
+      </div>
+    )
   }
 
   return (

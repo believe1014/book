@@ -28,6 +28,12 @@ function FullLoader() {
 export default function App() {
   const init = useAuth((s) => s.init)
   useEffect(() => { init() }, [init])
+  // SSO:回到分頁時重新對中央同步(別處登出/換人即時反映)
+  useEffect(() => {
+    const onVis = () => { if (document.visibilityState === 'visible') useAuth.getState().syncSso() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [])
 
   return (
     <>

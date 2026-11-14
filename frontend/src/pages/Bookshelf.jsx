@@ -90,7 +90,7 @@ export default function Bookshelf() {
               <div className="card" style={userMenuStyle}>
                 <div className="text-xs muted" style={{ padding: '6px 12px' }}>{user?.email}</div>
                 <button className="btn btn-ghost btn-sm" style={{ width: '100%', justifyContent: 'flex-start' }}
-                  onClick={() => { logout(); navigate('/login') }}>登出</button>
+                  onClick={() => { if (!logout()) navigate('/login') }}>登出</button>
               </div>
             )}
           </div>

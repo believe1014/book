@@ -461,12 +461,13 @@ def test_accept_invitation_by_invited_email_succeeds(client, auth, user_factory)
     )
     token = r.json()["data"]["invitation"]["token"]
 
+    # 註冊時 _auto_accept_invites 已不分大小寫自動接受(SSO spec §9-6),
+    # 之後再手動 accept 該 token 已非 pending → 404。
     invited = user_factory(email="invited@test.com")  # 大小寫不同仍應相符
     r2 = client.post(
         "/api/invitations/accept", json={"token": token}, headers=invited["headers"]
     )
-    assert r2.status_code == 200, r2.text
-    assert r2.json()["data"]["book_id"] == book_id
+    assert r2.status_code == 404, r2.text
 
     r3 = client.get(f"/api/books/{book_id}", headers=invited["headers"])
     assert r3.status_code == 200, r3.text
