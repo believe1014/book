@@ -80,23 +80,31 @@ def init_db() -> None:
     from . import models  # noqa: F401
 
     SQLModel.metadata.create_all(engine)
-    _ensure_comment_quote_column()
+    _ensure_added_columns()
 
 
-def _ensure_comment_quote_column() -> None:
-    """Add comments.quote on pre-existing DBs (create_all never alters tables).
+# (table, column, column DDL) — 舊庫補欄位(create_all never alters tables)
+_ADDED_COLUMNS = [
+    ("comments", "quote", "TEXT"),
+    ("users", "believe_uid", "VARCHAR"),
+]
 
-    ponytail: single hand-rolled ALTER, no migration tool — add Alembic only if
-    schema churn grows beyond a handful of columns. Works on SQLite + Postgres.
+
+def _ensure_added_columns() -> None:
+    """Add columns on pre-existing DBs. Works on SQLite + Postgres.
+
+    ponytail: hand-rolled ALTERs, no migration tool — add Alembic only if
+    schema churn grows beyond a handful of columns.
     """
     from sqlalchemy import inspect, text
 
     insp = inspect(engine)
-    cols = {c["name"] for c in insp.get_columns("comments")}
-    if "quote" in cols:
-        return
     with engine.begin() as conn:
-        conn.execute(text("ALTER TABLE comments ADD COLUMN quote TEXT"))
+        for table, col, ddl in _ADDED_COLUMNS:
+            if col not in {c["name"] for c in insp.get_columns(table)}:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+        # 名稱同 SQLModel 對 unique+index 欄位產生的索引,新庫已有 → 略過;NULL 可多筆
+        conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_believe_uid ON users (believe_uid)"))
 
 
 def get_session():

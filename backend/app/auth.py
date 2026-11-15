@@ -54,6 +54,7 @@ def sso_identity(request) -> Optional[dict]:
     if not email:
         return None
     return {
+        "uid": request.headers.get("x-believe-user-id", "").strip(),
         "email": email,
         "name": unquote(request.headers.get("x-believe-user-name", "")).strip(),
         "email_verified": request.headers.get("x-believe-email-verified") == "1",

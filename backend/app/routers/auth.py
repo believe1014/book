@@ -1,4 +1,6 @@
 """Auth routes (spec §5.2): register, login, me."""
+import logging
+
 from fastapi import APIRouter, Depends, Request
 from sqlmodel import Session, func, select
 
@@ -16,6 +18,8 @@ from ..deps import get_current_user
 from ..models import BookMember, Invitation, User
 from ..schemas import AuthOut, LoginIn, RegisterIn, UserOut
 from ..services.rate_limit import login_rate_limiter
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -109,13 +113,32 @@ def sso(request: Request, session: Session = Depends(get_session)):
     ident = sso_identity(request)
     if ident is None:
         raise errors.unauthorized("未登入 believe 會員")
-    user = _find_user(session, ident["email"])
-    if user is None:
-        user = User(
-            email=ident["email"],
-            password_hash=unusable_password_hash(),
-            name=(ident["name"] or ident["email"].split("@")[0])[:100],
-        )
+    uid, email, name = ident["uid"], ident["email"], ident["name"][:100]
+    user = session.exec(select(User).where(User.believe_uid == uid)).first() if uid else None
+    if user is not None:
+        # spec §13.2:中央改 email → 跟隨(新 email 被別的本地帳號占用則保留舊的)
+        if user.email.lower() != email:
+            other = _find_user(session, email)
+            if other is None:
+                user.email = email
+            else:
+                log.warning("SSO email 跟隨失敗:%s 已被本地 user %s 占用(user %s 保留 %s)",
+                            email, other.id, user.id, user.email)
+    else:
+        user = _find_user(session, email)
+        if user is not None and user.believe_uid and uid and user.believe_uid != uid:
+            # 此 email 的本地帳號已屬另一個中央帳號(對方改過 email)→ 不交給新的人
+            log.warning("SSO 拒絕:%s 本地帳號已綁中央 %s,請求者 %s", email, user.believe_uid, uid)
+            raise errors.conflict("此 email 的 book 帳號已屬於另一位會員,請聯絡管理員")
+        if user is None:
+            user = User(email=email, password_hash=unusable_password_hash(),
+                        name=name or email.split("@")[0])
+        if uid:
+            user.believe_uid = uid
+    # 名稱跟隨中央:book 沒有本地改名功能,中央是唯一可編輯處;中央名稱空則不清掉
+    if name and user.name != name:
+        user.name = name
+    if user.id is None or session.is_modified(user):
         session.add(user)
         session.commit()
         session.refresh(user)

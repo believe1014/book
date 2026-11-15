@@ -23,6 +23,8 @@ class User(SQLModel, table=True):
     name: str
     avatar_url: Optional[str] = None
     created_at: str = Field(default_factory=utcnow)
+    # believe 中央 user id(account spec §13.2);SSO 以此為主鍵對應
+    believe_uid: Optional[str] = Field(default=None, unique=True, index=True)
 
 
 class Book(SQLModel, table=True):
